@@ -1,0 +1,9 @@
+node_modules
+.next
+.next-sample-auth
+.git
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
