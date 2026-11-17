@@ -1,0 +1,4 @@
+.next/
+.next-sample-auth/
+next-env.d.ts
+*.tsbuildinfo

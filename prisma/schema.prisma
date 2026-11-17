@@ -1,0 +1,496 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LaneType {
+  TURF_NET
+  BOWLING_MACHINE
+}
+
+enum SlotKind {
+  BOOKABLE
+  MAINTENANCE
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum PricingTier {
+  PEAK
+  OFF_PEAK
+}
+
+enum LeadSource {
+  WHATSAPP
+  PHONE
+  WALK_IN
+  WEB
+}
+
+enum BookingStatus {
+  HELD
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  COMPLETED
+}
+
+enum BookingPaymentStatus {
+  UNPAID
+  DEPOSIT_PAID
+  FULLY_PAID
+}
+
+enum PaymentTransactionType {
+  COLLECTION
+  REFUND
+  WALLET_CREDIT
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  ONLINE_GATEWAY
+  WALLET
+}
+
+enum CancellationFeeType {
+  FREE
+  PERCENT_OF_BOOKING_TOTAL
+  FIXED
+  FORFEIT_PAID_AMOUNT
+}
+
+model Tenant {
+  id                String   @id @default(uuid()) @db.Uuid
+  slug              String   @unique
+  name              String
+  currency          String   @db.Char(3)
+  unpaidHoldMinutes Int
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  branches             Branch[]
+  users                User[]
+  customers            Customer[]
+  roles                Role[]
+  permissions          Permission[]
+  cancellationPolicies CancellationPolicy[]
+  invoiceSequence      InvoiceSequence?
+}
+
+model Branch {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  code           String
+  name           String
+  /// IANA time zone used for pricing windows and local calendar display.
+  timeZone       String
+  /// Staff member attributed as lead owner on direct self-service web bookings.
+  webLeadOwnerId String?  @db.Uuid
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  webLeadOwner User?         @relation("BranchWebLeadOwner", fields: [tenantId, webLeadOwnerId], references: [tenantId, id], onDelete: Restrict)
+  lanes        Lane[]
+  rosterShifts StaffRoster[]
+  invoices     Invoice[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@index([tenantId, webLeadOwnerId])
+}
+
+model Lane {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String   @db.Uuid
+  name      String
+  type      LaneType
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  branch       Branch            @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  slots        SlotSchedule[]
+  pricingRules LanePricingRule[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, branchId, name])
+  @@index([tenantId, branchId, type, isActive])
+}
+
+model LanePricingRule {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @db.Uuid
+  laneId       String      @db.Uuid
+  tier         PricingTier
+  dayOfWeek    DayOfWeek
+  /// Minutes from local midnight. Split overnight windows at 1440.
+  startMinute  Int
+  endMinute    Int
+  pricePerHour Decimal     @db.Decimal(14, 4)
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+
+  lane Lane @relation(fields: [tenantId, laneId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, laneId, dayOfWeek, startMinute])
+}
+
+model SlotSchedule {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  laneId    String   @db.Uuid
+  kind      SlotKind @default(BOOKABLE)
+  startsAt  DateTime @db.Timestamptz(3)
+  endsAt    DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  lane            Lane                @relation(fields: [tenantId, laneId], references: [tenantId, id], onDelete: Restrict)
+  bookings        Booking[]
+  rescheduledFrom BookingReschedule[] @relation("ReschedulePreviousSlot")
+  rescheduledTo   BookingReschedule[] @relation("RescheduleNewSlot")
+
+  // Keep slot times immutable once a booking references the slot. Reschedule
+  // by moving the booking to a different slot and recording the change.
+  // Lock affected lane rows in ID order before checking overlaps on [start, end).
+  @@unique([tenantId, id])
+  @@unique([tenantId, laneId, startsAt, endsAt, kind])
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  email        String
+  displayName  String
+  passwordHash String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer             Customer?
+  roles                UserRole[]
+  webLeadBranches      Branch[]             @relation("BranchWebLeadOwner")
+  ownedBookings        Booking[]            @relation("BookingLeadOwner")
+  createdBookings      Booking[]            @relation("BookingCreator")
+  cancelledBookings    Booking[]            @relation("BookingCancelledBy")
+  recordedPayments     PaymentTransaction[]
+  bookingReschedules   BookingReschedule[]
+  issuedInvoices       Invoice[]
+  issuedInvoiceCredits InvoiceCreditNote[]
+  rosterShifts         StaffRoster[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, email])
+}
+
+model Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  name        String
+  description String?
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+}
+
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  /// Stable code used by application permission guards.
+  code        String
+  description String?
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  roles  RolePermission[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+}
+
+model UserRole {
+  tenantId String @db.Uuid
+  userId   String @db.Uuid
+  roleId   String @db.Uuid
+
+  user User @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Cascade)
+  role Role @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, userId, roleId])
+  @@index([tenantId, roleId])
+}
+
+model RolePermission {
+  tenantId     String @db.Uuid
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Cascade)
+  permission Permission @relation(fields: [tenantId, permissionId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, roleId, permissionId])
+  @@index([tenantId, permissionId])
+}
+
+model Customer {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  userId        String?  @db.Uuid
+  name          String
+  phone         String?
+  email         String?
+  walletBalance Decimal  @default(0) @db.Decimal(14, 4)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user     User?     @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Restrict)
+  bookings Booking[]
+  invoices Invoice[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userId])
+  @@index([tenantId, phone])
+}
+
+model Booking {
+  id                   String               @id @default(uuid()) @db.Uuid
+  tenantId             String               @db.Uuid
+  customerId           String               @db.Uuid
+  slotId               String               @db.Uuid
+  cancellationPolicyId String               @db.Uuid
+  leadSource           LeadSource
+  leadOwnerId          String               @db.Uuid
+  /// Staff user for assisted bookings. Customer's user account for direct web bookings.
+  creatorId            String               @db.Uuid
+  headcount            Int
+  status               BookingStatus        @default(HELD)
+  paymentStatus        BookingPaymentStatus @default(UNPAID)
+  currency             String               @db.Char(3)
+  totalAmount          Decimal              @db.Decimal(14, 4)
+  depositRequired      Decimal              @default(0) @db.Decimal(14, 4)
+  /// Net payment applied to the booking, updated atomically with its payment ledger.
+  amountPaid           Decimal              @default(0) @db.Decimal(14, 4)
+  /// Set from the tenant's hold duration for unpaid holds.
+  holdExpiresAt        DateTime?            @db.Timestamptz(3)
+  cancelledAt          DateTime?            @db.Timestamptz(3)
+  cancelledById        String?              @db.Uuid
+  cancellationFee      Decimal?             @db.Decimal(14, 4)
+  cancellationReason   String?
+  isAiGenerated        Boolean              @default(false)
+  aiConfidenceScore    Float?
+  conversationId       String?
+  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @db.Timestamptz(3)
+
+  customer           Customer             @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  slot               SlotSchedule         @relation(fields: [tenantId, slotId], references: [tenantId, id], onDelete: Restrict)
+  cancellationPolicy CancellationPolicy   @relation(fields: [tenantId, cancellationPolicyId], references: [tenantId, id], onDelete: Restrict)
+  leadOwner          User                 @relation("BookingLeadOwner", fields: [tenantId, leadOwnerId], references: [tenantId, id], onDelete: Restrict)
+  creator            User                 @relation("BookingCreator", fields: [tenantId, creatorId], references: [tenantId, id], onDelete: Restrict)
+  cancelledBy        User?                @relation("BookingCancelledBy", fields: [tenantId, cancelledById], references: [tenantId, id], onDelete: Restrict)
+  payments           PaymentTransaction[]
+  reschedules        BookingReschedule[]
+  invoice            Invoice?
+
+  // Confirmed reservations and unexpired holds block other bookings.
+  // Confirm payment under the same lane lock used to create or reschedule bookings.
+  @@unique([tenantId, id])
+  @@index([tenantId, slotId, status, holdExpiresAt])
+  @@index([status, holdExpiresAt])
+  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, leadOwnerId, createdAt])
+  @@index([tenantId, creatorId])
+  @@index([tenantId, cancelledById])
+  @@index([tenantId, cancellationPolicyId])
+}
+
+model BookingReschedule {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  bookingId      String   @db.Uuid
+  previousSlotId String   @db.Uuid
+  newSlotId      String   @db.Uuid
+  changedById    String   @db.Uuid
+  previousTotal  Decimal  @db.Decimal(14, 4)
+  newTotal       Decimal  @db.Decimal(14, 4)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  booking      Booking      @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Restrict)
+  previousSlot SlotSchedule @relation("ReschedulePreviousSlot", fields: [tenantId, previousSlotId], references: [tenantId, id], onDelete: Restrict)
+  newSlot      SlotSchedule @relation("RescheduleNewSlot", fields: [tenantId, newSlotId], references: [tenantId, id], onDelete: Restrict)
+  changedBy    User         @relation(fields: [tenantId, changedById], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, bookingId, createdAt])
+  @@index([tenantId, previousSlotId])
+  @@index([tenantId, newSlotId])
+  @@index([tenantId, changedById])
+}
+
+model PaymentTransaction {
+  id                String                   @id @default(uuid()) @db.Uuid
+  tenantId          String                   @db.Uuid
+  bookingId         String                   @db.Uuid
+  recordedById      String?                  @db.Uuid
+  type              PaymentTransactionType
+  status            PaymentTransactionStatus @default(PENDING)
+  method            PaymentMethod
+  /// Store positive amounts. The transaction type determines the direction.
+  amount            Decimal                  @db.Decimal(14, 4)
+  currency          String                   @db.Char(3)
+  idempotencyKey    String
+  provider          String?
+  providerReference String?
+  processedAt       DateTime?                @db.Timestamptz(3)
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @db.Timestamptz(3)
+
+  booking    Booking @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Restrict)
+  recordedBy User?   @relation(fields: [tenantId, recordedById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, provider, providerReference])
+  @@index([tenantId, bookingId, createdAt])
+  @@index([tenantId, recordedById])
+}
+
+model CancellationPolicy {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @db.Uuid
+  name              String
+  version           Int      @default(1)
+  allowWalletCredit Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tiers    CancellationPolicyTier[]
+  bookings Booking[]
+
+  // Create a new version when changing a policy already assigned to bookings.
+  @@unique([tenantId, id])
+  @@unique([tenantId, name, version])
+}
+
+model CancellationPolicyTier {
+  id                   String              @id @default(uuid()) @db.Uuid
+  tenantId             String              @db.Uuid
+  cancellationPolicyId String              @db.Uuid
+  /// Use the highest matching threshold. Compare actual notice without rounding.
+  /// MVP tiers are 0 (inclusive, forfeit), 360 (inclusive, partial), and 1440 (exclusive, free).
+  minimumNoticeMinutes Int
+  minimumInclusive     Boolean             @default(true)
+  feeType              CancellationFeeType
+  /// Percentage in 0–100, or a fixed amount in the tenant's currency.
+  feeValue             Decimal?            @db.Decimal(14, 4)
+
+  policy CancellationPolicy @relation(fields: [tenantId, cancellationPolicyId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, cancellationPolicyId, minimumNoticeMinutes])
+}
+
+model StaffRoster {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String   @db.Uuid
+  staffId   String   @db.Uuid
+  startsAt  DateTime @db.Timestamptz(3)
+  endsAt    DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  branch Branch @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  staff  User   @relation(fields: [tenantId, staffId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, branchId, staffId, startsAt, endsAt])
+  @@index([tenantId, branchId, startsAt, endsAt])
+  @@index([tenantId, staffId, startsAt, endsAt])
+}
+
+model InvoiceSequence {
+  tenantId   String @id @db.Uuid
+  nextNumber Int    @default(1)
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+}
+
+model Invoice {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  bookingId       String   @db.Uuid
+  branchId        String   @db.Uuid
+  customerId      String   @db.Uuid
+  issuedById      String   @db.Uuid
+  number          Int
+  customerName    String
+  customerEmail   String?
+  issuerName      String
+  branchName      String
+  branchTimeZone  String
+  laneName        String
+  serviceStartsAt DateTime @db.Timestamptz(3)
+  serviceEndsAt   DateTime @db.Timestamptz(3)
+  currency        String   @db.Char(3)
+  totalAmount     Decimal  @db.Decimal(14, 4)
+  issuedAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  booking     Booking             @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Restrict)
+  branch      Branch              @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  customer    Customer            @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  issuedBy    User                @relation(fields: [tenantId, issuedById], references: [tenantId, id], onDelete: Restrict)
+  creditNotes InvoiceCreditNote[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, bookingId])
+  @@unique([tenantId, number])
+  @@index([tenantId, issuedAt])
+  @@index([tenantId, branchId, issuedAt])
+  @@index([tenantId, customerId, issuedAt])
+}
+
+model InvoiceCreditNote {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  invoiceId      String   @db.Uuid
+  issuedById     String   @db.Uuid
+  number         Int
+  amount         Decimal  @db.Decimal(14, 4)
+  reason         String
+  idempotencyKey String
+  issuedAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  invoice  Invoice @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Restrict)
+  issuedBy User    @relation(fields: [tenantId, issuedById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, number])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, invoiceId, issuedAt])
+}

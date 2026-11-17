@@ -1,0 +1,36 @@
+{
+  "name": "indoor-cricket-booking",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "db:deploy": "prisma migrate deploy",
+    "db:validate": "prisma validate",
+    "db:bootstrap": "node --env-file-if-exists=.env dist/bootstrap-tenant.js",
+    "db:sample-auth": "node --env-file-if-exists=.env dist/seed-sample-auth.js",
+    "db:sample-bookings": "node --env-file-if-exists=.env dist/seed-sample-bookings.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.10",
+    "@nestjs/core": "^11.2.10",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-express": "^11.2.10",
+    "@nestjs/platform-socket.io": "^11.2.10",
+    "@nestjs/websockets": "^11.2.10",
+    "@prisma/client": "6.19.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prisma": "6.19.2",
+    "typescript": "~5.9.3"
+  }
+}
