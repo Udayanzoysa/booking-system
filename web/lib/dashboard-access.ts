@@ -11,8 +11,10 @@ export const dashboardSections = {
 } as const;
 
 export type DashboardSection = keyof typeof dashboardSections;
-const staffPermissions = new Set<string>(Object.values(dashboardSections).flatMap((section) => [...section.permissions])
-  .concat(['RECORD_PAYMENT', 'ISSUE_REFUND', 'WAIVE_CANCELLATION_FEE']));
+const staffPermissions = new Set<string>([
+  ...Object.values(dashboardSections).flatMap((section) => [...section.permissions]),
+  'RECORD_PAYMENT', 'ISSUE_REFUND', 'WAIVE_CANCELLATION_FEE',
+]);
 
 export function hasDashboardAccess(permissions: readonly string[]): boolean {
   return permissions.some((permission) => staffPermissions.has(permission));

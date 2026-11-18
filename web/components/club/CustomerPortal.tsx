@@ -10,6 +10,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { io } from 'socket.io-client';
 import { api, ApiError, apiOrigin, json } from '../../lib/api';
 import { branchMidnight, civilDay, shiftDay } from '../../lib/dates';
+import { hasDashboardAccess } from '../../lib/dashboard-access';
 import { BookingDialog, bookingState, formatBookingMoney, type Booking, type BookingActions, type BookingDialogMode } from '../BookingDialog';
 import type { CalendarLane, CalendarSlot } from '../Calendar';
 import { InvoiceDialog } from '../Invoices';
@@ -249,7 +250,7 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
       </section> : !customerTenant ? <section className="cp-state-card"><Phone size={25}/><h2>Arrange your session with the club</h2><p>Call to check available times and prices.</p><a href="tel:+94701261966" className="cp-primary">070 126 1966</a></section> :
       !sessionReady || pageLoading ? <section className="cp-state-card" role="status"><Clock3 size={24}/><p>Opening your player account…</p></section> :
       differentArena ? <section className="cp-state-card"><h2>Choose your arena account</h2><p>Your current account belongs to another arena. Sign out to connect to Strikz Club.</p><button type="button" className="cp-primary" disabled={authPending} onClick={() => { void clearSession(); }}>Use another account</button></section> :
-      hasProfileError ? <section className="cp-state-card"><h2>Open your staff workspace</h2><p>Your current account has no player profile. Use the staff dashboard or sign out to register as a player.</p><Link className="cp-primary" href="/dashboard">Staff dashboard <ArrowRight size={16}/></Link><button type="button" className="cp-text-link" disabled={authPending} onClick={() => { void clearSession(); }}>Use a player account</button></section> :
+      hasProfileError ? <section className="cp-state-card"><h2>Use your player account</h2><p>Your current account has no player profile. Sign out to register or sign in as a player.</p>{hasDashboardAccess(permissions) && <Link className="cp-primary" href="/dashboard">Staff dashboard <ArrowRight size={16}/></Link>}<button type="button" className="cp-text-link" disabled={authPending} onClick={() => { void clearSession(); }}>Use another account</button></section> :
       token && accountError ? <section className="cp-state-card"><h2>Could not open your account</h2><p role="alert">{accountError.message}</p><button type="button" className="cp-primary" onClick={refresh}>Try again</button></section> :
       !signedIn ? <div className="cp-auth-layout">
         <div className="cp-auth-image"><img src="/strikz/images/cricket.webp" width={640} height={420} alt="Indoor cricket under the lights"/><div><p>YOUR GAME. YOUR TIME.</p><span>Live slots · Clear prices · Your bookings</span></div></div>

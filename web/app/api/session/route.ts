@@ -6,7 +6,14 @@ export const dynamic = 'force-dynamic';
 const responseHeaders = { 'Cache-Control': 'private, no-store' };
 
 function sameOrigin(request: NextRequest): boolean {
-  return request.headers.get('origin') === request.nextUrl.origin;
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+  const forwardedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedHost && forwardedProto && ['http', 'https'].includes(forwardedProto)) {
+    return origin === `${forwardedProto}://${forwardedHost}`;
+  }
+  return origin === request.nextUrl.origin;
 }
 
 function clearSession(response: NextResponse) {
@@ -36,7 +43,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Send sign-in details as JSON.' }, { status: 415, headers: responseHeaders });
   }
   const body: unknown = await request.json().catch(() => null);
-  if (!body || typeof body !== 'object' || !('action' in body) || !['login', 'register'].includes(String(body.action))) {
+  if (!body || typeof body !== 'object' || !('action' in body)
+    || typeof body.action !== 'string' || !['login', 'register'].includes(body.action)) {
     return NextResponse.json({ message: 'Choose login or register.' }, { status: 400, headers: responseHeaders });
   }
   const fields = body as Record<string, unknown>;

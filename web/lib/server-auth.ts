@@ -2,7 +2,7 @@ import 'server-only';
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import type { Principal, Session } from '../components/SignIn';
+import type { Principal, Session } from './session';
 import { canAccessSection, dashboardPath, hasDashboardAccess, type DashboardSection } from './dashboard-access';
 
 export const sessionCookieName = 'techwing-session';

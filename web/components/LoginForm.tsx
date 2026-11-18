@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, LockKeyhole } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import type { Principal } from './SignIn';
+import type { Principal } from '../lib/session';
 import { hasDashboardAccess } from '../lib/dashboard-access';
 
 export default function LoginForm({ destination, serviceUnavailable }: { destination: string; serviceUnavailable: boolean }) {
