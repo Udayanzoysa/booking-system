@@ -33,6 +33,8 @@ export class AuthController {
     return {
       tenantId: principal.tenantId,
       userId: principal.userId,
+      displayName: principal.displayName,
+      tenantSlug: principal.tenantSlug,
       expiresAt: principal.expiresAt,
       permissions: [...principal.permissions].sort(),
     };

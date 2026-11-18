@@ -1,0 +1,17 @@
+.staff-login{min-height:100dvh;padding:28px 22px 42px;background:radial-gradient(ellipse at 50% 0,#e4f6fb,transparent 60%),#f3f7fb;color:#162c43}
+.staff-login-back{display:inline-flex;gap:8px;align-items:center;color:#49667d;font-size:13px;font-weight:650}
+.staff-login-card{width:min(100%,430px);margin:28px auto 0;background:#fff;border:1px solid #dfebf2;border-radius:18px;padding:25px 32px 29px;box-shadow:0 12px 50px #143f5b0c}
+.staff-login-brand{position:relative;width:115px;height:94px;margin:0 auto 18px;overflow:hidden}
+.staff-login-brand img{position:absolute;max-width:none;width:170px;height:170px;left:-27px;top:-39px}
+.staff-login-icon{display:grid;place-items:center;background:#e8f7fc;color:#087ba5;border-radius:10px;width:39px;height:39px;margin-bottom:13px}
+.staff-login-card h1{font-size:28px;font-weight:780;letter-spacing:-.9px;line-height:1.15}
+.staff-login-card>p{color:#61768b;font-size:13px;margin:9px 0 22px;line-height:1.6}
+.staff-login-card form{display:grid;gap:14px}
+.staff-login-card label{display:grid;gap:6px;font-size:12px;font-weight:700}
+.staff-login-card input{border:1px solid #dce7ef;border-radius:8px;width:100%;padding:10px 11px;background:white;font-weight:400;font-size:14px;color:#172c43}
+.staff-login-card form>button{display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid #007eae;border-radius:8px;background:#007eae;color:#fff;min-height:42px;font-size:13px;font-weight:700;margin-top:4px}
+.staff-login-card form>button:hover{background:#006d97}
+.staff-login-error{padding:10px;border:1px solid #f3cacf;border-radius:8px;background:#fff2f3;color:#9f2934;font-size:12px;line-height:1.5}
+.staff-login-card .staff-login-player{font-size:12px;margin:20px 0 0;padding-top:18px;border-top:1px solid #e4edf3}
+.staff-login-player a{color:#007da9;font-weight:700}
+@media(max-width:480px){.staff-login{padding:18px 14px 28px}.staff-login-card{padding:22px;margin-top:24px}}

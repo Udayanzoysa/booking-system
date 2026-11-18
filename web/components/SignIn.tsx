@@ -6,7 +6,14 @@ import { useEffect, useRef, useState } from 'react';
 import { api, json } from '../lib/api';
 
 export type Session = { token: string; name: string; tenantSlug: string };
-export type Principal = { userId: string; tenantId: string; permissions: string[]; expiresAt: number };
+export type Principal = {
+  userId: string;
+  tenantId: string;
+  permissions: string[];
+  expiresAt: number;
+  displayName: string;
+  tenantSlug: string;
+};
 
 export default function SignIn({ onClose, onSuccess }: { onClose: () => void; onSuccess: (session: Session) => void }) {
   const ref = useRef<HTMLDialogElement>(null);

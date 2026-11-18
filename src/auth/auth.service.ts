@@ -178,6 +178,8 @@ export class AuthService {
       where: { tenantId_id: { tenantId, id: claims.sub } },
       select: {
         id: true,
+        displayName: true,
+        tenant: { select: { slug: true } },
         isActive: true,
         roles: {
           select: {
@@ -206,7 +208,10 @@ export class AuthService {
         }
       }
     }
-    return { tenantId, userId: user.id, expiresAt: claims.exp * 1000, permissions };
+    return {
+      tenantId, userId: user.id, displayName: user.displayName, tenantSlug: user.tenant.slug,
+      expiresAt: claims.exp * 1000, permissions,
+    };
   }
 
   private async signAccessToken(userId: string, tenantId: string) {

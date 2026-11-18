@@ -15,21 +15,32 @@ import type { CalendarLane, CalendarSlot } from '../Calendar';
 import { InvoiceDialog } from '../Invoices';
 
 type PortalProps = { initialSport?: string; initialNow?: number };
-type Session = { token: string; tenantSlug: string };
-type Principal = { userId: string; tenantId: string; permissions: string[]; expiresAt: number };
+type Session = { token: string; name: string; tenantSlug: string };
+type Principal = { userId: string; tenantId: string; permissions: string[]; expiresAt: number; displayName: string; tenantSlug: string };
+type SessionResponse = { session: Session; principal: Principal };
 type Customer = { id: string; name: string; walletBalance: string; userId: string };
 type Branch = { id: string; code: string; name: string; timeZone: string; isActive: boolean };
 type Availability = { branchId: string; timeZone: string; currency: string; lanes: CalendarLane[]; slots: CalendarSlot[] };
 type BookingPage = { bookings: Booking[]; nextCursor: string | null };
 
-const demo = process.env.NEXT_PUBLIC_TECHWING_QUICK_DEMO === '1';
-const customerTenant = process.env.NEXT_PUBLIC_CUSTOMER_TENANT_SLUG?.trim() || (demo ? 'techwing-auth-sample' : '');
+const customerTenant = process.env.NEXT_PUBLIC_CUSTOMER_TENANT_SLUG?.trim() ?? '';
 const customerBranch = process.env.NEXT_PUBLIC_CUSTOMER_BRANCH_ID?.trim();
-const sessionKey = 'strikz-customer-session:' + customerTenant;
 const timeFormat = (value: string, timeZone: string) =>
   new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 const dateFormat = (value: string, timeZone: string) =>
   new Intl.DateTimeFormat('en-GB', { timeZone, dateStyle: 'medium' }).format(new Date(value));
+
+async function requestSession(options?: RequestInit): Promise<SessionResponse | null> {
+  const headers = new Headers(options?.headers);
+  if (options?.body) headers.set('Content-Type', 'application/json');
+  const response = await fetch('/api/session', { ...options, headers, cache: 'no-store', credentials: 'same-origin' });
+  if (response.status === 401 && (!options?.method || options.method === 'GET')) return null;
+  if (!response.ok) {
+    const data: { message?: string | string[] } | null = await response.json().catch(() => null);
+    throw new ApiError(response.status, [data?.message ?? 'Could not connect to your account.'].flat().join(' · '));
+  }
+  return response.status === 204 ? null : response.json() as Promise<SessionResponse>;
+}
 
 export default function CustomerPortal({ initialSport = 'cricket', initialNow = Date.now() }: PortalProps) {
   const [client] = useState(() => new QueryClient({
@@ -53,16 +64,24 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
   const [selection, setSelection] = useState<BookingDialogMode | null>(null);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [now, setNow] = useState(initialNow);
-  const token = session?.token ?? null;
+  const token = session?.tenantSlug === customerTenant ? session.token : null;
+  const differentArena = Boolean(session && session.tenantSlug !== customerTenant);
   const futsal = sport.toLowerCase() === 'futsal' || sport.toLowerCase() === 'football';
 
   useEffect(() => {
-    try {
-      const stored: unknown = JSON.parse(sessionStorage.getItem(sessionKey) ?? 'null');
-      if (stored && typeof stored === 'object' && 'token' in stored && typeof stored.token === 'string'
-        && 'tenantSlug' in stored && stored.tenantSlug === customerTenant) setSession(stored as Session);
-    } catch { sessionStorage.removeItem(sessionKey); }
-    setSessionReady(true);
+    const controller = new AbortController();
+    // Older player sessions used a different persistence mechanism.
+    try { sessionStorage.removeItem('strikz-customer-session:' + customerTenant); } catch { /* Legacy storage is optional. */ }
+    void requestSession({ signal: controller.signal }).then((result) => {
+      if (!controller.signal.aborted) setSession(result?.session ?? null);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        setAuthError(error instanceof Error ? error.message : 'Could not restore your account.');
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setSessionReady(true);
+    });
+    return () => controller.abort();
   }, []);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
@@ -86,8 +105,7 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
     enabled: signedIn,
   });
   const branches = (branchQuery.data ?? []).filter((branch) => branch.isActive !== false && (!customerBranch || branch.id === customerBranch));
-  const branch = branches.find((item) => item.id === selectedBranch)
-    ?? (demo ? branches.find((item) => item.code === 'sample-volume') : undefined) ?? branches[0];
+  const branch = branches.find((item) => item.id === selectedBranch) ?? branches[0];
   const timeZone = branch?.timeZone ?? 'Asia/Colombo';
   const today = civilDay(new Date(now), timeZone);
   const selectedDate = date || today;
@@ -118,9 +136,8 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
   const hasProfileError = profile.error instanceof ApiError && profile.error.status === 404;
   const expired = principal.error instanceof ApiError && principal.error.status === 401;
 
-  function clearSession(message = '') {
+  function clearClientSession(message = '') {
     setSession(null);
-    sessionStorage.removeItem(sessionKey);
     setSelection(null);
     setInvoiceId(null);
     setAuthError(message);
@@ -129,12 +146,20 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
     cache.clear();
   }
 
+  async function clearSession(message = '') {
+    setAuthPending(true);
+    try {
+      await requestSession({ method: 'DELETE' });
+      clearClientSession(message);
+    } catch (error) {
+      if (message) clearClientSession(message);
+      else setActionError(error instanceof Error ? error.message : 'Could not sign out. Try again.');
+    } finally { setAuthPending(false); }
+  }
+
   useEffect(() => {
-    if (expired) clearSession('Your session has expired. Sign in to continue.');
+    if (expired) void clearSession('Your session has expired. Sign in to continue.');
   }, [expired]);
-  useEffect(() => {
-    if (hasProfileError) clearSession('Use a player account to book here. Venue staff can open the staff dashboard.');
-  }, [hasProfileError]);
   useEffect(() => {
     if (!signedIn || !token) return;
     const socket = io(apiOrigin + '/availability', { auth: { token }, reconnectionAttempts: 3 });
@@ -151,6 +176,7 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
     setAuthError('');
     const fields = new FormData(event.currentTarget);
     const body = {
+      action: signUp ? 'register' : 'login',
       tenantSlug: customerTenant, email: String(fields.get('email')).trim(),
       password: String(fields.get('password')),
       ...(signUp ? {
@@ -159,11 +185,15 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
       } : {}),
     };
     try {
-      const result = await api<{ accessToken: string }>(signUp ? '/auth/register' : '/auth/login', null, json('POST', body));
-      await api<Customer>('/customers/me', result.accessToken);
-      const next = { token: result.accessToken, tenantSlug: customerTenant };
-      sessionStorage.setItem(sessionKey, JSON.stringify(next));
-      setSession(next);
+      const result = await requestSession(json('POST', body));
+      if (!result) throw new Error('Could not open your account.');
+      cache.clear();
+      setSelection(null);
+      setInvoiceId(null);
+      setActionError('');
+      setSelectedBranch('');
+      setTab('slots');
+      setSession(result.session);
     } catch (error) {
       setAuthError(error instanceof ApiError && error.status === 404
         ? 'This account has no player profile. Register a player account or contact the club.'
@@ -196,13 +226,14 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
     catch (error) { setActionError(error instanceof Error ? error.message : 'Could not open your booking.'); }
   }
   const dataError = branchQuery.error ?? availability.error ?? reservations.error;
-  const pageLoading = Boolean(token && !signedIn && !expired && !hasProfileError);
+  const accountError = principal.error ?? profile.error;
+  const pageLoading = Boolean(token && !signedIn && !accountError);
 
   return <div className="customer-portal">
     <header className="cp-header">
       <Link href="/" className="cp-wordmark" aria-label="Strikz Club home"><i aria-hidden="true"><b/><b/><b/></i>STRIKZ <span>CLUB</span></Link>
       <nav aria-label="Booking navigation"><Link href="/"><ArrowLeft size={15}/> Back to club</Link>
-        {signedIn && <button type="button" onClick={() => clearSession()}><LogOut size={15}/> Sign out</button>}
+        {session && <button type="button" disabled={authPending} onClick={() => { void clearSession(); }}><LogOut size={15}/> Sign out</button>}
       </nav>
     </header>
     <main className="cp-main">
@@ -217,6 +248,9 @@ function CustomerWorkspace({ sport, initialNow }: { sport: string; initialNow: n
           <Link href="/book?sport=cricket" className="cp-text-link">Book a cricket session <ArrowRight size={15}/></Link></div>
       </section> : !customerTenant ? <section className="cp-state-card"><Phone size={25}/><h2>Arrange your session with the club</h2><p>Call to check available times and prices.</p><a href="tel:+94701261966" className="cp-primary">070 126 1966</a></section> :
       !sessionReady || pageLoading ? <section className="cp-state-card" role="status"><Clock3 size={24}/><p>Opening your player account…</p></section> :
+      differentArena ? <section className="cp-state-card"><h2>Choose your arena account</h2><p>Your current account belongs to another arena. Sign out to connect to Strikz Club.</p><button type="button" className="cp-primary" disabled={authPending} onClick={() => { void clearSession(); }}>Use another account</button></section> :
+      hasProfileError ? <section className="cp-state-card"><h2>Open your staff workspace</h2><p>Your current account has no player profile. Use the staff dashboard or sign out to register as a player.</p><Link className="cp-primary" href="/dashboard">Staff dashboard <ArrowRight size={16}/></Link><button type="button" className="cp-text-link" disabled={authPending} onClick={() => { void clearSession(); }}>Use a player account</button></section> :
+      token && accountError ? <section className="cp-state-card"><h2>Could not open your account</h2><p role="alert">{accountError.message}</p><button type="button" className="cp-primary" onClick={refresh}>Try again</button></section> :
       !signedIn ? <div className="cp-auth-layout">
         <div className="cp-auth-image"><img src="/strikz/images/cricket.webp" width={640} height={420} alt="Indoor cricket under the lights"/><div><p>YOUR GAME. YOUR TIME.</p><span>Live slots · Clear prices · Your bookings</span></div></div>
         <section className="cp-auth-card" aria-labelledby="customer-auth-title">
