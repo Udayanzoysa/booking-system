@@ -1,6 +1,9 @@
 import { LeadSource } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -13,14 +16,23 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ManualPaymentDto } from '../payments/payments.dto';
 import { EXPLICIT_OFFSET } from '../lanes/time-range.dto';
 
 export class CreateBookingDto {
+  @ValidateIf((dto: CreateBookingDto) => dto.slotId !== undefined || dto.slotIds === undefined)
   @IsUUID()
-  slotId!: string;
+  slotId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(48)
+  @IsUUID('all', { each: true })
+  slotIds?: string[];
 
   @IsInt()
   @Min(1)

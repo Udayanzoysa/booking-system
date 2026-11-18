@@ -11,6 +11,7 @@ import {
   PaymentMethod,
   PaymentTransactionType,
   Prisma,
+  SlotKind,
   type Booking,
 } from '@prisma/client';
 import { AvailabilityEvents } from '../availability/availability.events';
@@ -145,10 +146,11 @@ export class BookingsService {
     }
     if (dto.initialPayment) requirePermission(principal, PermissionCode.RECORD_PAYMENT);
 
-    const laneId = await this.findSlotLane(tenantId, dto.slotId);
+    const slotIds = this.createSlotIds(dto);
+    const laneId = await this.findSlotLane(tenantId, slotIds[0]);
     const result = await this.prisma.$transaction(async (tx) => {
       await lockLanes(tx, tenantId, [laneId]);
-      const slot = await this.readSlot(tx, tenantId, dto.slotId, laneId);
+      const slot = await this.readCreateSlot(tx, tenantId, slotIds, laneId);
       const leadOwnerId = assisted ? (dto.leadOwnerId ?? userId) : slot.lane.branch.webLeadOwnerId;
       const leadSource = assisted ? (dto.leadSource ?? LeadSource.WALK_IN) : LeadSource.WEB;
       if (!leadSource || !leadOwnerId) {
@@ -388,12 +390,79 @@ export class BookingsService {
     return slot.laneId;
   }
 
+  private createSlotIds(dto: CreateBookingDto) {
+    if ((dto.slotId !== undefined) === (dto.slotIds !== undefined)) {
+      throw new BadRequestException('Supply either slotId or slotIds');
+    }
+    const ids = dto.slotId === undefined ? dto.slotIds : [dto.slotId];
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 48
+      || ids.some((id) => typeof id !== 'string')) {
+      throw new BadRequestException('Select between 1 and 48 sessions');
+    }
+    const normalized = ids.map((id) => id.toLowerCase());
+    if (new Set(normalized).size !== normalized.length) {
+      throw new BadRequestException('A session cannot be selected more than once');
+    }
+    return normalized;
+  }
+
+  private async readCreateSlot(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    slotIds: string[],
+    laneId: string,
+  ): Promise<SlotDetails> {
+    const slots = await tx.slotSchedule.findMany({
+      where: { tenantId, id: { in: slotIds } },
+      orderBy: [{ startsAt: 'asc' }, { endsAt: 'asc' }],
+      ...slotDetails,
+    });
+    if (slots.length !== slotIds.length) {
+      throw new NotFoundException('One or more selected sessions were not found');
+    }
+    for (const slot of slots) {
+      if (slot.laneId !== laneId) {
+        throw new BadRequestException('All selected sessions must use the same ground');
+      }
+      if (!slot.lane.isActive || !slot.lane.branch.isActive) {
+        throw new ConflictException('The selected lane is not accepting bookings');
+      }
+      if (slot.isBookingRange || slot.kind !== SlotKind.BOOKABLE) {
+        throw new BadRequestException('Select bookable sessions from the calendar');
+      }
+    }
+    if (slots.length === 1) return slots[0];
+
+    for (let index = 1; index < slots.length; index++) {
+      if (slots[index - 1].endsAt.getTime() !== slots[index].startsAt.getTime()) {
+        throw new BadRequestException('Selected sessions must be consecutive without gaps or overlaps');
+      }
+    }
+    const startsAt = slots[0].startsAt;
+    const endsAt = slots[slots.length - 1].endsAt;
+    if (endsAt.getTime() - startsAt.getTime() > 24 * 60 * 60_000) {
+      throw new BadRequestException('A booking cannot exceed 24 hours');
+    }
+
+    // The lane lock makes concurrent requests share one immutable range. Existing
+    // catalog sessions with these exact endpoints are safe to reuse as well.
+    return tx.slotSchedule.upsert({
+      where: { tenantId_laneId_startsAt_endsAt_kind: { tenantId, laneId, startsAt, endsAt, kind: SlotKind.BOOKABLE } },
+      create: { tenantId, laneId, startsAt, endsAt, kind: SlotKind.BOOKABLE, isBookingRange: true },
+      update: {},
+      ...slotDetails,
+    });
+  }
+
   private async readSlot(tx: Prisma.TransactionClient, tenantId: string, slotId: string, laneId: string) {
     const slot = await tx.slotSchedule.findUnique({
       where: { tenantId_id: { tenantId, id: slotId } },
       ...slotDetails,
     });
     if (!slot) throw new NotFoundException('Slot not found');
+    if (slot.isBookingRange) {
+      throw new BadRequestException('Select a session from the calendar');
+    }
     if (slot.laneId !== laneId || !slot.lane.isActive || !slot.lane.branch.isActive) {
       throw new ConflictException('The selected lane is not accepting bookings');
     }

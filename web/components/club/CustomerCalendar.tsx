@@ -11,6 +11,7 @@ type Props = {
   date: string; today: string; timeZone: string; currency: string; now: number;
   lanes: CalendarLane[]; slots: CalendarSlot[]; loading?: boolean;
   selectedSlotId?: string;
+  selectedSlotIds?: readonly string[];
   onDateChange: (date: string) => void; onSlotSelect: (slot: CalendarSlot) => void; onRefresh: () => void;
 };
 const labels = { AVAILABLE: 'Available', RESERVED: 'Available · Call club', PAID: 'Already booked', HELD: 'Available · Call club', MAINTENANCE: 'Maintenance', UNPRICED: 'Contact club' };
@@ -19,7 +20,7 @@ const dateLabel = (date: string, options: Intl.DateTimeFormatOptions) =>
 const clock = (value: string, timeZone: string) => new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value));
 const minutes = (value: string, timeZone: string) => { const [hour, minute] = clock(value, timeZone).split(':').map(Number); return hour * 60 + minute; };
 
-export function CustomerCalendar({ date, today, timeZone, currency, now, lanes, slots, loading, selectedSlotId, onDateChange, onSlotSelect, onRefresh }: Props) {
+export function CustomerCalendar({ date, today, timeZone, currency, now, lanes, slots, loading, selectedSlotId, selectedSlotIds, onDateChange, onSlotSelect, onRefresh }: Props) {
   const [view, setView] = useState<'day' | 'week'>('day');
   const selected = slots.find(slot => slot.id === selectedSlotId);
   const displayDate = view === 'day' && selected ? civilDay(new Date(selected.startsAt), timeZone) : date;
@@ -62,7 +63,7 @@ export function CustomerCalendar({ date, today, timeZone, currency, now, lanes, 
             const available = slot.status === 'AVAILABLE' && Date.parse(slot.startsAt) > now;
             const inquiry = ['HELD', 'RESERVED'].includes(slot.status) && Date.parse(slot.startsAt) > now;
             const lane = lanes[laneIndex];
-            const selected = slot.id === selectedSlotId;
+            const selected = selectedSlotIds ? selectedSlotIds.includes(slot.id) : slot.id === selectedSlotId;
             return <button type="button" key={slot.id} disabled={!available && !inquiry} aria-pressed={available || inquiry ? selected : undefined} className={'cp-calendar-slot ' + slot.status.toLowerCase() + (selected ? ' is-selected' : '')}
               style={{ top: `calc(${(minutes(slot.startsAt, timeZone) - startHour * 60) / totalMinutes * 100}% + 2px)`, height: `calc(${duration / totalMinutes * 100}% - 4px)`, ...(view === 'week' ? { width: `calc(${100 / lanes.length}% - 6px)`, left: `calc(${laneIndex * 100 / lanes.length}% + 3px)` } : {}) }}
               aria-label={`${dateLabel(civilDay(new Date(slot.startsAt), timeZone), { weekday: 'long', day: 'numeric', month: 'long' })}, ${lane?.name}, ${clock(slot.startsAt, timeZone)} to ${clock(slot.endsAt, timeZone)}, ${available ? formatBookingMoney(slot.price ?? 0, currency) + ', available' : labels[slot.status]}`}

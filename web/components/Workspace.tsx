@@ -153,8 +153,9 @@ export default function Workspace({
   const lanes = gridQuery.data?.lanes ?? [];
   const bookings = bookingQuery.data?.pages.flatMap((page) => page.bookings) ?? [];
   const calendarBookings = weekBookings.data ?? [];
-  const bookingByExactSlot = new Map(calendarBookings.filter((item) => activeStatuses.has(item.status)
-    && (item.status !== 'HELD' || (item.holdExpiresAt && Date.parse(item.holdExpiresAt) > now))).map((item) => [item.slotId, item]));
+  const activeCalendarBookings = calendarBookings.filter((item) => activeStatuses.has(item.status)
+    && (item.status !== 'HELD' || (item.holdExpiresAt && Date.parse(item.holdExpiresAt) > now)));
+  const bookingByExactSlot = new Map(activeCalendarBookings.map((item) => [item.slotId, item]));
   const ownerLabel = (booking: Booking) => booking.label ?? booking.customerName ?? customers.find((person) => person.id === booking.customerId)?.name
     ?? (staff ? 'Booking ' + booking.id.slice(0, 8).toUpperCase() : 'Your booking');
   const slots = rawSlots.map((slot): CalendarSlot => {
@@ -164,6 +165,30 @@ export default function Workspace({
       holdExpiresAt: booking.holdExpiresAt,
     } } : slot;
   });
+  const publicSlotIds = new Set(rawSlots.map((slot) => slot.id));
+  for (const booking of activeCalendarBookings) {
+    if (!booking.slot || publicSlotIds.has(booking.slotId)) continue;
+    const coveredSlots = rawSlots.filter((slot) => slot.laneId === booking.slot!.laneId
+      && Date.parse(slot.startsAt) < Date.parse(booking.slot!.endsAt)
+      && Date.parse(slot.endsAt) > Date.parse(booking.slot!.startsAt));
+    // Combined customer reservations have an internal slot, so draw their full interval once.
+    // Calendar removes the covered hourly cells when a reservation has booking details.
+    slots.push({
+      id: booking.slotId,
+      laneId: booking.slot.laneId,
+      startsAt: booking.slot.startsAt,
+      endsAt: booking.slot.endsAt,
+      kind: 'BOOKABLE',
+      status: booking.status === 'HELD' ? 'HELD'
+        : booking.paymentStatus === 'FULLY_PAID' ? 'PAID' : 'RESERVED',
+      price: booking.totalAmount,
+      staffed: coveredSlots.length > 0 && coveredSlots.every((slot) => slot.staffed),
+      booking: {
+        id: booking.id, label: ownerLabel(booking), headcount: booking.headcount,
+        amountPaid: booking.amountPaid, holdExpiresAt: booking.holdExpiresAt,
+      },
+    });
+  }
 
   useEffect(() => {
     if (!token || !signedIn) return;

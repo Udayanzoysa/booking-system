@@ -178,6 +178,20 @@ export class LanesService {
           throw new ConflictException('Maintenance overlaps an existing reservation or maintenance block');
         }
       }
+      if (kind === SlotKind.BOOKABLE) {
+        const existingRange = await tx.slotSchedule.findUnique({
+          where: { tenantId_laneId_startsAt_endsAt_kind: { tenantId, laneId, startsAt, endsAt, kind } },
+          select: { id: true, isBookingRange: true },
+        });
+        if (existingRange?.isBookingRange) {
+          // An explicit schedule addition publishes this exact interval without
+          // changing the immutable times referenced by previous reservations.
+          return tx.slotSchedule.update({
+            where: { tenantId_id: { tenantId, id: existingRange.id } },
+            data: { isBookingRange: false },
+          });
+        }
+      }
       return tx.slotSchedule.create({ data: { tenantId, laneId, kind, startsAt, endsAt } });
     });
     this.events.changed(tenantId);
@@ -189,13 +203,32 @@ export class LanesService {
       await lockLanes(tx, tenantId, [laneId]);
       const slot = await tx.slotSchedule.findFirst({
         where: { tenantId, laneId, id: slotId },
-        select: { _count: { select: { bookings: true, rescheduledFrom: true, rescheduledTo: true } } },
+        select: { startsAt: true, endsAt: true, _count: { select: { bookings: true, rescheduledFrom: true, rescheduledTo: true } } },
       });
       if (!slot) {
         throw new NotFoundException('Slot not found');
       }
       if (Object.values(slot._count).some((references) => references > 0)) {
         throw new ConflictException('A slot used in booking history cannot be deleted');
+      }
+
+      const overlappingHistory = await tx.slotSchedule.findFirst({
+        where: {
+          tenantId,
+          laneId,
+          id: { not: slotId },
+          startsAt: { lt: slot.endsAt },
+          endsAt: { gt: slot.startsAt },
+          OR: [
+            { bookings: { some: { tenantId } } },
+            { rescheduledFrom: { some: { tenantId } } },
+            { rescheduledTo: { some: { tenantId } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (overlappingHistory) {
+        throw new ConflictException('A slot overlapping booking history cannot be deleted');
       }
 
       await tx.slotSchedule.delete({ where: { tenantId_id: { tenantId, id: slotId } } });
@@ -221,7 +254,7 @@ export class LanesService {
               type: true,
               pricingRules: true,
               slots: {
-                where: { startsAt: { lt: range.endsAt }, endsAt: { gt: range.startsAt } },
+                where: { isBookingRange: false, startsAt: { lt: range.endsAt }, endsAt: { gt: range.startsAt } },
                 orderBy: { startsAt: 'asc' },
                 select: { id: true, laneId: true, startsAt: true, endsAt: true, kind: true },
               },

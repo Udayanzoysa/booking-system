@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { io } from 'socket.io-client';
 import { api, ApiError, apiOrigin, json } from '../../lib/api';
 import { branchMidnight, civilDay, shiftDay } from '../../lib/dates';
+import { bookingSlotsByIds, contiguousBookingSlots } from '../../lib/booking-range';
 import { BookingDialog, bookingState, formatBookingMoney, type Booking, type BookingActions, type BookingDialogMode } from '../BookingDialog';
 import type { CalendarLane, CalendarSlot } from '../Calendar';
 import { InvoiceDialog } from '../Invoices';
@@ -60,11 +61,12 @@ function CustomerWorkspace({ sport, initialNow, customerTenant, customerBranch }
   const [selectedBranch, setSelectedBranch] = useState('');
   const [date, setDate] = useState('');
   const [chosenSlotId, setChosenSlotId] = useState('');
+  const [chosenEndSlotId, setChosenEndSlotId] = useState('');
   const [players, setPlayers] = useState(6);
   const [tab, setTab] = useState<'slots' | 'bookings'>('slots');
   const [showHistory, setShowHistory] = useState(false);
   const [selection, setSelection] = useState<BookingDialogMode | null>(null);
-  const [pendingSlotId, setPendingSlotId] = useState<string | null>(null);
+  const [pendingSlotIds, setPendingSlotIds] = useState<string[] | null>(null);
   const [inquiry, setInquiry] = useState<CalendarSlot | null>(null);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<Booking | null>(null);
@@ -104,9 +106,12 @@ function CustomerWorkspace({ sport, initialNow, customerTenant, customerBranch }
   const lanes = availability.data?.lanes ?? [];
   const dialogSlots = (availability.data?.slots ?? []).filter(slot => Date.parse(slot.startsAt) > now).map(slot => ({ ...slot, staffed: false }));
   const daySlots = dialogSlots.filter(slot => civilDay(new Date(slot.startsAt), timeZone) === selectedDate).sort((a,b) => a.startsAt.localeCompare(b.startsAt));
-  const chosenSlot = dialogSlots.find(slot => slot.id === chosenSlotId)
-    ?? daySlots.find(slot => slot.status === 'AVAILABLE')
-    ?? daySlots.find(slot => ['HELD','RESERVED'].includes(slot.status));
+  const chosenSlot = chosenSlotId ? dialogSlots.find(slot => slot.id === chosenSlotId)
+    : daySlots.find(slot => slot.status === 'AVAILABLE') ?? daySlots.find(slot => ['HELD','RESERVED'].includes(slot.status));
+  const endSlots = chosenSlot ? contiguousBookingSlots(dialogSlots, chosenSlot.id, timeZone, now) : [];
+  const endIndex = chosenEndSlotId ? endSlots.findIndex(slot => slot.id === chosenEndSlotId) : 0;
+  const chosenSlots = endIndex < 0 ? [] : endSlots.slice(0, endIndex + 1);
+  const selectedEndSlotId = chosenSlots[chosenSlots.length - 1]?.id ?? '';
   const currency = availability.data?.currency ?? arena.data?.currency ?? 'LKR';
   const contactPhone = arena.data?.contactPhone || '070 126 1966';
   const contactHref = phoneLink(contactPhone);
@@ -135,14 +140,18 @@ function CustomerWorkspace({ sport, initialNow, customerTenant, customerBranch }
   useEffect(() => {
     if (!signedIn) return;
     setAuthOpen(false);
-    if (pendingSlotId) {
-      if (!availability.data) return;
-      const slot = dialogSlots.find(item => item.id === pendingSlotId);
-      if (slot?.status === 'AVAILABLE') setSelection({ kind: 'new', slotId: slot.id });
-      else setActionError('That session is no longer available online. Choose another session or call the club.');
-      setPendingSlotId(null);
-    }
-  }, [signedIn, pendingSlotId, availability.data]);
+    if (!pendingSlotIds) return;
+    let cancelled = false;
+    void availability.refetch().then(result => {
+      if (cancelled) return;
+      const selected = bookingSlotsByIds(result.data?.slots ?? [], pendingSlotIds, timeZone, Date.now());
+      if (result.error) setActionError('Could not check your selected times. Refresh the calendar and try again.');
+      else if (selected.length) setSelection({ kind: 'new', slotIds: selected.map(slot => slot.id) });
+      else setActionError('One of your selected times is no longer available. Choose a new start and end time.');
+      setPendingSlotIds(null);
+    });
+    return () => { cancelled = true; };
+  }, [signedIn, pendingSlotIds, timeZone, availability.refetch]);
   function acceptSession(result: SessionResponse) {
     cache.clear(); setSelection(null); setInvoiceId(null); setCheckout(null); setAuthError(''); setActionError(''); setSession(result.session);
   }
@@ -173,12 +182,17 @@ function CustomerWorkspace({ sport, initialNow, customerTenant, customerBranch }
   }
   function selectSlot(slot: CalendarSlot) {
     if (['HELD','RESERVED'].includes(slot.status)) { setInquiry(slot); return; }
-    if (slot.status !== 'AVAILABLE') return;
-    if (!signedIn) { setPendingSlotId(slot.id); setAuthOpen(true); return; }
-    setSelection({ kind: 'new', slotId: slot.id });
+    const selected = bookingSlotsByIds(dialogSlots, chosenSlots.map(item => item.id), timeZone, Date.now());
+    if (slot.status !== 'AVAILABLE' || !selected.length) return;
+    const slotIds = selected.map(item => item.id);
+    setActionError('');
+    if (!signedIn) { setPendingSlotIds(slotIds); setAuthOpen(true); return; }
+    setSelection({ kind: 'new', slotIds });
   }
   function myBookings() { setTab('bookings'); if (!signedIn) setAuthOpen(true); }
-  function changeDate(next: string) { setDate(next); setChosenSlotId(''); }
+  function changeDate(next: string) { setDate(next); setChosenSlotId(''); setChosenEndSlotId(''); }
+  function changeStart(id: string) { setChosenSlotId(id); setChosenEndSlotId(''); }
+  function changeEnd(id: string) { if (chosenSlot) setChosenSlotId(chosenSlot.id); setChosenEndSlotId(id); }
   const dataError = arena.error ?? availability.error ?? (signedIn ? reservations.error : null);
   const accountError = principal.error ?? profile.error;
   const authContent = <section className="cp-auth-card" aria-labelledby="customer-auth-title">
@@ -208,8 +222,8 @@ function CustomerWorkspace({ sport, initialNow, customerTenant, customerBranch }
         {paymentReturn && <div className="cp-payment-return" role="status"><Clock3 size={18}/><span>{paymentReturn}</span><button type="button" onClick={() => setPaymentReturn('')}>Dismiss</button></div>}
         {(dataError || actionError) && <div className="cp-error" role="alert"><span>{actionError || dataError?.message}</span><button type="button" onClick={() => { setActionError(''); refresh(); }}>Retry</button></div>}
         {tab === 'slots' ? <div className="cp-booking-layout">
-          <div className="cp-calendar-pane">{arena.isPending || availability.isFetching && !availability.data ? <section className="cp-state-card" role="status"><CalendarDays size={26}/><p>Finding your next session…</p></section> : !branch ? <section className="cp-state-card"><CalendarDays size={26}/><h2>Sessions are being prepared</h2><p>Contact the club to arrange your booking.</p><a href={contactHref} className="cp-primary">Call the club</a></section> : <CustomerCalendar date={selectedDate} today={today} now={now} timeZone={timeZone} currency={currency} lanes={lanes} slots={availability.data?.slots ?? []} selectedSlotId={chosenSlot?.id} loading={availability.isFetching} onDateChange={changeDate} onRefresh={refresh} onSlotSelect={slot => setChosenSlotId(slot.id)}/>}</div>
-          <CustomerBookingPanel branches={branches} branchId={branch?.id ?? ''} date={selectedDate} today={today} now={now} timeZone={timeZone} currency={currency} slots={availability.data?.slots ?? []} selectedSlot={chosenSlot} players={players} signedIn={signedIn} loading={arena.isPending || availability.isFetching && !availability.data} contactPhone={contactPhone} contactHref={contactHref} onBranchChange={id => { setSelectedBranch(id); setDate(''); setChosenSlotId(''); }} onDateChange={changeDate} onSlotChange={setChosenSlotId} onPlayersChange={setPlayers} onContinue={selectSlot}/>
+          <div className="cp-calendar-pane">{arena.isPending || availability.isFetching && !availability.data ? <section className="cp-state-card" role="status"><CalendarDays size={26}/><p>Finding your next session…</p></section> : !branch ? <section className="cp-state-card"><CalendarDays size={26}/><h2>Sessions are being prepared</h2><p>Contact the club to arrange your booking.</p><a href={contactHref} className="cp-primary">Call the club</a></section> : <CustomerCalendar date={selectedDate} today={today} now={now} timeZone={timeZone} currency={currency} lanes={lanes} slots={availability.data?.slots ?? []} selectedSlotId={chosenSlot?.id} selectedSlotIds={chosenSlots.length ? chosenSlots.map(slot => slot.id) : chosenSlot ? [chosenSlot.id] : []} loading={availability.isFetching} onDateChange={changeDate} onRefresh={refresh} onSlotSelect={slot => changeStart(slot.id)}/>}</div>
+          <CustomerBookingPanel branches={branches} branchId={branch?.id ?? ''} date={selectedDate} today={today} now={now} timeZone={timeZone} currency={currency} slots={availability.data?.slots ?? []} selectedSlot={chosenSlot} selectedSlots={chosenSlots} endSlots={endSlots} selectedEndSlotId={selectedEndSlotId} players={players} signedIn={signedIn} loading={arena.isPending || availability.isFetching && !availability.data} contactPhone={contactPhone} contactHref={contactHref} onBranchChange={id => { setSelectedBranch(id); setDate(''); changeStart(''); }} onDateChange={changeDate} onSlotChange={changeStart} onEndSlotChange={changeEnd} onPlayersChange={setPlayers} onContinue={selectSlot}/>
         </div> : !signedIn ? <section className="cp-state-card"><CalendarDays size={27}/><h2>Your sessions, all in one place</h2><p>Sign in to see payment balances and transfer slip updates.</p><button className="cp-primary" onClick={() => setAuthOpen(true)}>Player sign in<ArrowRight size={16}/></button></section> : <section className="cp-bookings" aria-label="Your bookings">
           <div className="cp-booking-list-heading"><h2>{showHistory ? 'All your bookings' : 'Current & upcoming bookings'}</h2><button type="button" className="cp-text-link" onClick={() => setShowHistory(!showHistory)}>{showHistory ? 'Show upcoming' : 'Include booking history'}</button></div>
           {reservations.isPending && <p role="status">Loading your bookings…</p>}
@@ -219,7 +233,7 @@ function CustomerWorkspace({ sport, initialNow, customerTenant, customerBranch }
         </section>}
       </>}
     </main><footer className="cp-footer"><span>STRIKZ CLUB · Pitipana, Homagama</span><a href={contactHref}><Phone size={14}/> {contactPhone}</a></footer>
-    {authOpen && !signedIn && <PortalModal title="Player account" onClose={() => { if (!authPending) { setAuthOpen(false); setPendingSlotId(null); } }}>{authContent}</PortalModal>}
+    {authOpen && !signedIn && <PortalModal title="Player account" onClose={() => { if (!authPending) { setAuthOpen(false); setPendingSlotIds(null); } }}>{authContent}</PortalModal>}
     {googleLinkOpen && signedIn && <PortalModal title="Connect your Google account" onClose={() => { if (!authPending) setGoogleLinkOpen(false); }}><div className="cp-google-link-panel"><p>Connect Google so you can sign in to your player account without entering a password next time.</p><GoogleSignIn tenantSlug={customerTenant} mode="link" disabled={authPending} onPendingChange={setAuthPending} onSuccess={(result) => { setGoogleLinkOpen(false); acceptSession(result); setGoogleNotice('Google connected. You can now use Continue with Google to sign in.'); }}/></div></PortalModal>}
     {inquiry && <PortalModal title="Arrange this session with the club" onClose={() => setInquiry(null)}><div className="cp-inquiry"><span className="cp-inquiry-badge">Available · Call club</span><h3>Full Turf · Indoor Ground</h3><p>{dateFormat(inquiry.startsAt, timeZone)} · {timeFormat(inquiry.startsAt, timeZone)}–{timeFormat(inquiry.endsAt, timeZone)}</p>{inquiry.price && <strong>{formatBookingMoney(inquiry.price, currency)}</strong>}<p>This session has a tentative or deposit reservation. The club can confirm availability and help arrange your booking.</p><a href={contactHref} className="cp-primary"><Phone size={18}/>Call {contactPhone}</a></div></PortalModal>}
     {selection && signedIn && <BookingDialog mode={selection} slots={dialogSlots} lanes={lanes} timezone={timeZone} currency={currency} staff={false} permissions={permissions} currentUser={{ id: principal.data!.userId, name: profile.data!.name }} walletBalance={profile.data?.walletBalance} initialHeadcount={players} actions={actions} token={token} onViewInvoice={setInvoiceId} onCheckout={booking => { setSelection(null); setCheckout(booking); }} onClose={() => setSelection(null)}/>}

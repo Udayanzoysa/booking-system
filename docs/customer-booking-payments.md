@@ -4,11 +4,13 @@
 
 1. Open `/book` to view the public Full Turf calendar. Register or sign in when reserving an available session or opening My bookings.
 2. Use the Day or Week calendar. Times use the branch’s time zone. Fully paid sessions show **Already booked** and cannot be selected. Held or deposit-paid sessions show **Available · Call club** and open a phone inquiry; they remain unavailable for a second online reservation. Maintenance and unpriced sessions cannot be reserved online.
-3. Enter the player count and reserve the session. The backend checks availability under a lane lock and creates the same booking visible in the staff calendar and All bookings.
+3. Choose a start and end time, enter the player count, and reserve the session. Consecutive available slots on the same ground can be combined: for example, 7–9 PM creates one two-hour booking with one total and payment flow. The end-time list stops at a gap or unavailable slot. The backend validates every selected slot and checks the whole interval under a lane lock, including any tariff changes between hours. Staff see one reservation covering the complete period in the calendar and All bookings.
 4. Open **Pay booking** from the booking dialog. The balance is read from the backend.
 5. Choose PayHere sandbox or bank transfer. Wallet payment remains available in the booking dialog when funded.
 
 Unpaid reservations have an expiry. Uploading a slip does not confirm payment or extend the hold. Payment must be verified while the booking is active and the slot remains available. Contact the club to reconcile a transfer if the hold expires first.
+
+Booking creation accepts either the existing `slotId` or a `slotIds` array of 1–48 unique scheduled slots. Array entries must be exactly consecutive on one ground and span at most 24 hours. A combined booking uses an internal range record; it does not add extra choices to the public calendar. All selected hours are reserved atomically and released together on cancellation or hold expiry.
 
 ## Bank account configuration
 
@@ -64,9 +66,12 @@ Run backend build and web typecheck/build normally. The integration script refus
 ```powershell
 npm.cmd run build
 node --env-file=.sample-auth/api.env scripts/check-customer-payments.cjs
+node --env-file=.sample-auth/api.env scripts/check-booking-ranges.cjs
 ```
 
 Alternatively, set `DATABASE_URL` and `JWT_SECRET` for that sample database and run `npm.cmd run test:customer-payments`. The script creates isolated fixture tenants, starts an ephemeral local API, performs 89 HTTP checks plus Socket.IO and encryption/storage checks, and deactivates the fixture accounts at completion. It sends no request to PayHere and performs no real transfer. It checks public privacy, staff attribution, tenant isolation, file validation and size, encrypted settings and credential rotation, concurrent approval and notification replay, rejected and expired payments, slot conflicts, amount/currency/signature checks, late payment reconciliation, and invoice balances.
+
+`npm.cmd run test:booking-ranges` uses the same isolated database requirement. It checks combined pricing, every selected hour's availability, concurrent overlapping requests, wallet replay, one invoice/payment for the whole range, cancellation, and preservation of booking history during schedule changes.
 
 For the running clean local preview, set `STRIKZ_TEST_PASSWORD` to the local administrator password and run `node --env-file=.local-strikz/api.env scripts/check-session-isolation.cjs`. This performs 20 HTTP checks covering independent customer/staff login and logout, protected dashboards, the public booking page, and favicon. It removes its one temporary unbooked player after checking.
 

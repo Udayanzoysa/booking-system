@@ -5,6 +5,7 @@ import { AlertCircle, ArrowLeft, CalendarClock, CheckCircle2, Clock3, CreditCard
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { CalendarLane, CalendarSlot } from "./Calendar";
 import { api } from "../lib/api";
+import { bookingRangeSummary, bookingSlotsByIds } from "../lib/booking-range";
 
 type LeadSource = "WHATSAPP" | "PHONE" | "WALK_IN" | "WEB";
 type PaymentMethod = "CASH" | "CARD" | "BANK_TRANSFER";
@@ -39,8 +40,7 @@ export type Booking = {
 
 type PaymentPayload = { idempotencyKey: string; amount: string; method?: PaymentMethod };
 type CancelPayload = { reason?: string; waiveFee?: boolean; creditWallet?: boolean };
-export type CreateBookingPayload = {
-  slotId: string;
+export type CreateBookingPayload = ({ slotId: string; slotIds?: never } | { slotId?: never; slotIds: string[] }) & {
   headcount: number;
   customerId?: string;
   leadOwnerId?: string;
@@ -60,7 +60,7 @@ export type BookingActions = {
 };
 
 export type BookingDialogMode =
-  | { kind: "new"; slotId?: string }
+  | { kind: "new"; slotId?: string; slotIds?: string[] }
   | { kind: "detail" | "reschedule"; booking: Booking };
 
 export type BookingDialogProps = {
@@ -184,7 +184,7 @@ function mergeBooking(previous: Booking, updated: Booking, replacement?: Calenda
 }
 
 export function BookingDialog(props: BookingDialogProps) {
-  const key = props.mode.kind === "new" ? ("new-" + (props.mode.slotId ?? "")) : (props.mode.kind + props.mode.booking.id);
+  const key = props.mode.kind === "new" ? ("new-" + (props.mode.slotIds?.join(",") ?? props.mode.slotId ?? "")) : (props.mode.kind + props.mode.booking.id);
   return <BookingDialogContent key={key} {...props} />;
 }
 
@@ -249,12 +249,14 @@ function BookingDialogContent({
     if (panel === "reschedule" && slot.id === booking?.slotId) return false;
     return slot.status === "AVAILABLE" || (panel === "reschedule" && slot.booking?.id === booking?.id);
   });
-  const selectedSlot = bookableSlots.find(({ id }) => id === slotId);
+  const fixedSlotIds = mode.kind === "new" && panel === "new" ? mode.slotIds : undefined;
+  const rangeSlots = fixedSlotIds ? bookingSlotsByIds(slots, fixedSlotIds, timezone, demo ? 0 : Date.now()) : [];
+  const selectedSlot = fixedSlotIds ? bookingRangeSummary(rangeSlots) : bookableSlots.find(({ id }) => id === slotId);
   useEffect(() => {
-    if ((panel === "new" || panel === "reschedule") && lanes.length === 1 && !slotId && bookableSlots[0]) {
+    if (!fixedSlotIds && (panel === "new" || panel === "reschedule") && lanes.length === 1 && !slotId && bookableSlots[0]) {
       setSlotId(bookableSlots[0].id);
     }
-  }, [panel, lanes.length, slotId, bookableSlots[0]?.id]);
+  }, [panel, lanes.length, slotId, bookableSlots[0]?.id, fixedSlotIds]);
   const amount = Number(selectedSlot?.price ?? 0);
   const wallet = Number(walletBalance ?? 0);
   const canCreateHold = permissions.includes("CREATE_UNPAID_HOLD");
@@ -302,6 +304,10 @@ function BookingDialogContent({
   async function submitNew(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSlot || !canManage) return;
+    if (fixedSlotIds && !bookingSlotsByIds(slots, fixedSlotIds, timezone, demo ? 0 : Date.now()).length) {
+      setError("Your selected session has changed. Close this dialog and choose your times again.");
+      return;
+    }
     const players = Number(headcount);
     if (!Number.isInteger(players) || players < 1 || players > 2147483647) {
       setError("Enter a whole number of players.");
@@ -322,7 +328,9 @@ function BookingDialogContent({
       setError("Enter a deposit greater than zero and below the booking total.");
       return;
     }
-    const payload: CreateBookingPayload = { slotId: selectedSlot.id, headcount: players };
+    const payload: CreateBookingPayload = fixedSlotIds
+      ? { slotIds: rangeSlots.map(slot => slot.id), headcount: players }
+      : { slotId: selectedSlot.id, headcount: players };
     if (staff) Object.assign(payload, { customerId, leadOwnerId, leadSource: "WALK_IN" });
     const attachTransfer = staff && method === "BANK_TRANSFER" && Boolean(slipFile) && (payment === "full" || payment === "deposit");
     if (amount > 0 && (payment === "full" || payment === "deposit")) {
@@ -474,7 +482,10 @@ function BookingDialogContent({
       {panel === "new" && <form onSubmit={submitNew}>
         <div className="bk-body">
           <div className="bk-grid">
-            <SlotPicker available={bookableSlots} lanes={lanes} current={selectedSlot} timezone={timezone} onChange={setSlotId} />
+            {fixedSlotIds ? <>
+              <div className="bk-ground-label"><span>Indoor ground</span><strong>{lanes.find(lane => lane.id === selectedSlot?.laneId)?.name ?? "Full Turf"}</strong></div>
+              <div className="bk-ground-label"><span>Your session</span><strong>{selectedSlot ? formatBookingTime(selectedSlot.startsAt, timezone) + "–" + formatBookingTime(selectedSlot.endsAt, timezone) : "Session unavailable"}</strong>{selectedSlot && <span>{formatBookingDate(selectedSlot.startsAt, timezone)} · {(Date.parse(selectedSlot.endsAt) - Date.parse(selectedSlot.startsAt)) / 60_000} minutes</span>}</div>
+            </> : <SlotPicker available={bookableSlots} lanes={lanes} current={selectedSlot} timezone={timezone} onChange={setSlotId} />}
             {staff && <>
               <Field label="Customer">
                 <select required value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
@@ -518,14 +529,14 @@ function BookingDialogContent({
           </div>}
           {selectedSlot && amount > 0 && staff && (payment === "full" || payment === "deposit") &&
             <p className="bk-copy">Record this payment after it has been received.</p>}
-          {!selectedSlot && <p className="bk-copy"><Clock3 size={16} /> {bookableSlots.length ? "Choose an available ground and time." : "Select another day in the calendar to find available slots."}</p>}
+          {!selectedSlot && <p className="bk-copy"><Clock3 size={16} /> {fixedSlotIds ? "One of your selected times is no longer available. Close this dialog and choose your times again." : bookableSlots.length ? "Choose an available ground and time." : "Select another day in the calendar to find available slots."}</p>}
           {error && <p className="bk-error" role="alert"><AlertCircle size={17} />{error}</p>}
         </div>
         <footer className="bk-dialog-footer">
           {staff && currentUser && <span>Created by {currentUser.name}</span>}
           <button type="button" className="bk-secondary" onClick={dismiss} disabled={processing}>Cancel</button>
           <button type="submit" className="bk-primary" disabled={!selectedSlot || !canManage || processing}>
-            {processing ? "Saving…" : (staff ? "Create booking" : "Reserve slot")}
+            {processing ? "Saving…" : (staff ? "Create booking" : "Reserve session")}
           </button>
         </footer>
       </form>}
