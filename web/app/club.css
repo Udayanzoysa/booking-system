@@ -1,0 +1,398 @@
+.club-site {
+  --ink: #10130f;
+  --paper: #f4f3e9;
+  --lime: #c1fa43;
+  --muted: #b2b9ad;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+}
+.club-site *, .club-site *::before, .club-site *::after { box-sizing: border-box; }
+.club-site { margin: 0; background: var(--ink); color: var(--paper); font: 400 16px/1.55 "DM Sans Variable", Arial, sans-serif; }
+.club-site button, .club-site input, .club-site select { font: inherit; }
+.club-site button, .club-site a { touch-action: manipulation; }
+.club-site button, .club-site summary { cursor: pointer; }
+.club-site a { color: inherit; text-decoration: none; }
+.club-site em { color: var(--lime); font-style: inherit; }
+.club-site button:focus-visible, .club-site a:focus-visible, .club-site summary:focus-visible, .club-site input:focus-visible, .club-site select:focus-visible {
+  outline: 3px solid #87bc16; outline-offset: 4px;
+}
+.club-site ::selection { color: var(--ink); background: var(--lime); }
+.club-site .wrap { width: min(89%, 1460px); margin-inline: auto; }
+.club-site .skipLink { position: fixed; top: 8px; left: 10px; transform: translateY(-180%); z-index: 70; background: var(--lime); color: #101310; padding: 12px; }
+.club-site .skipLink:focus { transform: none; }
+.club-site .clubBrand { display: inline-flex; align-items: center; gap: 11px; white-space: nowrap; }
+.club-site .clubBrand strong { font: italic 800 32px/.9 var(--display); letter-spacing: -.04em; }
+.club-site .clubBrand strong span { color: var(--lime); }
+.club-site .mark { display: inline-flex; gap: 3px; align-items: center; transform: skew(-20deg); }
+.club-site .mark b { width: 7px; height: 24px; background: var(--lime); }
+.club-site .mark b:first-child { height: 16px; align-self: flex-end; }
+.club-site .mark b:last-child { height: 16px; align-self: flex-start; }
+.club-site .rubric { display: flex; align-items: center; gap: 12px; margin: 0; text-transform: uppercase; letter-spacing: .16em; font-size: 11px; font-weight: 600; }
+.club-site .line { width: 28px; height: 2px; background: currentColor; }
+.club-site .hero { position: relative; isolation: isolate; overflow: hidden; background: #101310; }
+.club-site .shade { position: absolute; inset: 0; background: linear-gradient(90deg,#060a06d6,#060a068a 34%,transparent 72%),linear-gradient(0deg,#060a06ed,transparent 44%); }
+.club-site .heroInner { min-height: max(620px, 100svh); display: flex; align-items: center; position: relative; padding-block: calc(var(--header-height) + 44px) 95px; }
+.club-site .heroCopy .rubric { color: #d6dfca; }
+.club-site .signal { width: 23px; height: 12px; display: inline-block; transform: skewX(-20deg); background: repeating-linear-gradient(90deg,var(--lime) 0 4px,transparent 4px 7px); }
+.club-site .hero h1 { margin: .18em 0; font: italic 800 clamp(94px,9.2vw,170px)/.85 var(--display); letter-spacing: -.033em; }
+.club-site .hero h1 span, .club-site .hero h1 em { display: block; }
+.club-site .heroLead { margin: 23px 0 26px; font-size: clamp(16px,1.23vw,20px); color: #d5dbce; line-height: 1.6; }
+.club-site .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+.club-site .cta, .club-site .heroExplore, .club-site .venueLink { display: inline-flex; align-items: center; gap: 14px; font-weight: 600; font-size: 15px; }
+.club-site .cta { min-height: 49px; padding: 11px 19px; border: 0; border-radius: 4px; color: var(--ink); background: var(--lime); }
+.club-site .cta span, .club-site .venueLink span { font-size: 22px; line-height: 1; }
+.club-site .cta:hover { background: #d9ff86; }
+.club-site .heroExplore { min-height: 44px; gap: 9px; text-decoration: underline; text-underline-offset: 6px; text-decoration-color: #77826d; }
+.club-site .walkthrough { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 60% 48%; }
+.club-site .heroRail { position: absolute; bottom: 24px; inset-inline: 0; display: flex; align-items: center; flex-direction: row-reverse; justify-content: space-between; border-top: 1px solid #ffffff4a; padding-top: 15px; color: #fafbf4; }
+.club-site .movieControl { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 5px; background: transparent; border: 0; color: inherit; font-size: 13px; font-weight: 600; }
+.club-site .movieControl span { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #ffffff99; border-radius: 50%; font: 13px/1 sans-serif; }
+.club-site .movieControl:hover span { border-color: var(--lime); }
+.club-site .hoursCue { display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase; font-size: 11px; font-weight: 600; letter-spacing: .1em; }
+.club-site .hoursCue b { width: 7px; height: 7px; background: var(--lime); border-radius: 50%; }
+.club-site .displayTitle { margin: .15em 0 0; font: italic 800 clamp(58px,6.5vw,112px)/.89 var(--display); letter-spacing: -.034em; }
+.club-site .sportsSection, .club-site .arenaFeature, .club-site .faqSection { padding-block: clamp(62px,7vw,118px); }
+.club-site .sportsSection { background: #eceee4; color: var(--ink); }
+.club-site .sportsHead { display: flex; justify-content: space-between; align-items: flex-end; gap: 25px; margin-bottom: 36px; }
+.club-site .sportsSection .rubric, .club-site .sportsSection .displayTitle em { color: #4d661d; }
+.club-site .sportsIntro { margin: 0; line-height: 1.55; font-size: 15px; color: #485041; }
+.club-site .sportGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.club-site .sportCard { padding: clamp(21px,2.3vw,38px); position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: flex-end; justify-content: space-between; gap: 15px; width: 100%; min-width: 0; min-height: 265px; aspect-ratio: 1.64; text-align: left; border: 0; border-radius: 3px; background: #21291e; color: #fff; }
+.club-site .sportDetails { min-width: 0; }
+.club-site .sportCard img, .club-site .sportCard::after { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+.club-site .sportCard img, .club-site .venuePhoto img { object-fit: cover; }
+.club-site .sportCard::after { content: ""; background: linear-gradient(0deg,#070b08ef,rgba(7,11,8,.45) 30%,transparent 69%); }
+.club-site .sportDetails strong { display: block; font: italic 800 clamp(54px,5.1vw,85px)/1 var(--display); text-transform: uppercase; }
+.club-site .sportDetails > span { font-size: 14px; color: #e4e7d9; }
+.club-site .cardArrow { flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; width: 43px; height: 43px; color: var(--lime); border: 1px solid #c1fa438c; font: 23px/1 sans-serif; }
+.club-site .arenaFeature { background: #171c16; }
+.club-site .arenaGrid { display: grid; grid-template-columns: 1.12fr .88fr; align-items: center; gap: clamp(36px,7vw,120px); }
+.club-site .venuePhoto { position: relative; margin: 0; overflow: hidden; border-radius: 3px; }
+.club-site .venuePhoto figcaption { display: flex; position: absolute; inset: auto 0 0; align-items: center; justify-content: space-between; gap: 12px; padding: 35px 16px 12px; background: linear-gradient(transparent, #080c08f2); color: white; }
+.club-site .venuePhoto figcaption > span:first-child { display: flex; gap: 12px; align-items: center; font-size: 14px; font-weight: 600; }
+.club-site .venuePhoto small { color: #d6e1cb; font-size: 12px; font-variant-numeric: tabular-nums; }
+.club-site .galleryControls { display: flex; gap: 5px; }
+.club-site .galleryControls button { min-width: 44px; height: 44px; font-size: 19px; background: #111710a6; border-radius: 50%; border: 1px solid #b5c1aa; color: white; }
+.club-site .galleryControls button:hover { background: var(--lime); color: var(--ink); }
+.club-site .venuePhoto img { display: block; width: 100%; height: clamp(370px,36vw,610px); object-position: center 57%; }
+.club-site .arenaFeature .rubric, .club-site .faqSection .rubric { color: var(--lime); }
+.club-site .venueCopy > p:not(.rubric) { color: #c8cdbf; margin: 24px 0; max-width: 47ch; }
+.club-site .venueFacts { margin: 0 0 24px; padding-block: 15px; border-block: 1px solid #464c40; display: flex; flex-wrap: wrap; gap: 15px clamp(15px,3vw,55px); }
+.club-site .venueFacts dt { color: #a6ad9f; font-size: 12px; }
+.club-site .venueFacts dd { margin: 2px 0 0; font-size: 15px; font-weight: 600; }
+.club-site .venueLink { color: var(--lime); padding-block: 6px; }
+.club-site .faqGrid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 5vw; }
+.club-site .faqList details { border-bottom: 1px solid #42483d; }
+.club-site .faqList details:first-child { border-top: 1px solid #42483d; }
+.club-site .faqList summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 2px; font-size: clamp(16px,1.27vw,21px); font-weight: 600; }
+.club-site .faqList summary::-webkit-details-marker { display: none; }
+.club-site .faqList summary span { position: relative; width: 15px; height: 15px; flex-shrink: 0; }
+.club-site .faqList summary span::before,.club-site .faqList summary span::after { content: ""; position: absolute; inset: 7px 0 auto; height: 1px; background: var(--lime); }
+.club-site .faqList summary span::after { transform: rotate(90deg); }
+.club-site .faqList details[open] summary span::after { transform: none; }
+.club-site .faqList details p { margin: -2px 38px 22px 2px; color: #bdc4b5; line-height: 1.7; }
+@media (prefers-reduced-motion: no-preference) {
+  .club-site .heroCopy > * { animation: clubEnter .68s backwards cubic-bezier(.2,.7,.25,1); }
+  .club-site .heroCopy h1 { animation-delay: .05s; }
+  .club-site .heroLead { animation-delay: .12s; }
+  .club-site .actions { animation-delay: .18s; }
+  .club-site [data-reveal].has-entered { animation: clubEnter .62s cubic-bezier(.18,.7,.3,1) backwards; }
+  .club-site .sportCard:nth-child(2).has-entered { animation-delay: .09s; }
+  .club-site .sportCard img, .club-site .venuePhoto img { transition: transform .7s cubic-bezier(.2,.65,.3,1); }
+  .club-site .cardArrow, .club-site .cta span, .club-site .venueLink span, .club-site .faqList summary span::after { transition: transform .22s, color .22s, background-color .22s; }
+  @media (hover: hover) {
+    .club-site .sportCard:hover img, .club-site .venuePhoto:hover img { transform: scale(1.045); }
+    .club-site .sportCard:hover .cardArrow { transform: rotate(45deg); background: var(--lime); color: var(--ink); }
+    .club-site .cta:hover span, .club-site .venueLink:hover span { transform: translate(2px,-2px); }
+  }
+  @keyframes clubEnter { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+}
+@media (max-width: 760px) {
+  .club-site .wrap { width: 90%; }
+  .club-site .heroInner { min-height: max(610px, 100svh); align-items: flex-end; padding-bottom: 99px; }
+  .club-site .hero h1 { font-size: clamp(80px,15.6vw,112px); }
+  .club-site .shade { background: linear-gradient(0deg,#0a0d0af5,#0a0d0acf 27%,#0a0d0a83 52%,transparent 80%); }
+  .club-site .walkthrough { object-position: 58% center; }
+  .club-site .heroLead { margin: 19px 0 22px; }
+  .club-site .heroRail { bottom: 18px; }
+  .club-site .actions { gap: 12px 20px; }
+  .club-site .sportsHead { align-items: flex-start; flex-direction: column; margin-bottom: 22px; gap: 15px; }
+  .club-site .sportsIntro br { display: none; }
+  .club-site .sportGrid, .club-site .arenaGrid, .club-site .faqGrid { grid-template-columns: 1fr; }
+  .club-site .sportGrid { gap: 14px; }
+  .club-site .sportCard { min-height: 215px; }
+  .club-site .arenaGrid, .club-site .faqGrid { gap: 30px; }
+  .club-site .venuePhoto img { height: clamp(240px,65vw,400px); }
+  .club-site .faqGrid .displayTitle br { display: none; }
+  .club-site .faqGrid .displayTitle em::before { content: " "; }
+}
+@media (prefers-reduced-motion: reduce) { }
+
+
+
+.club-site { --header-height: 72px; }
+
+.club-site .clubHeader {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 40;
+  color: #f6f6ed;
+  background: rgb(14 17 14 / 94%);
+  border: 0;
+  border-bottom: 1px solid rgb(233 239 221 / 17%);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+.club-site .clubHeaderInner {
+  min-height: var(--header-height);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: "brand nav book";
+  align-items: center;
+  column-gap: 20px;
+}
+.club-site .clubHeaderBrand { grid-area: brand; justify-self: start; }
+.club-site .clubHeaderBook {
+  grid-area: book;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  gap: 18px;
+  padding: 0 18px;
+  color: #151810;
+  background: var(--lime);
+  border: none;
+  border-radius: 3px;
+  font: 600 14px/1 "DM Sans Variable", sans-serif;
+  white-space: nowrap;
+}
+.club-site .clubHeaderBook span { font-size: 19px; }
+.club-site .clubHeaderBook:hover { background: #d9ff8b; }
+.club-site .clubHeaderNav {
+  grid-area: nav;
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 2.5vw, 44px);
+}
+.club-site .clubHeaderNav a {
+  position: relative;
+  padding: 12px 0;
+  color: #c2c6bd;
+  font: 600 14px/1.4 "DM Sans Variable", sans-serif;
+}
+.club-site .clubHeaderNav a[aria-current],
+.club-site .clubHeaderNav a:hover { color: #fff; }
+.club-site .clubHeaderNav a[aria-current]::after {
+  position: absolute;
+  content: "";
+  bottom: 6px;
+  left: 0;
+  width: 14px;
+  height: 2px;
+  background: var(--lime);
+}
+.club-site .clubHeaderToggle { display: none; }
+@media (max-width: 760px) {
+  .club-site { --header-height: 64px; }
+  .club-site .clubHeaderInner {
+    grid-template-columns: 1fr auto auto;
+    grid-template-areas: "brand book toggle";
+    column-gap: clamp(6px, 2vw, 12px);
+  }
+  .club-site .clubHeaderBrand { gap: 8px; }
+  .club-site .clubHeaderBrand strong { font-size: clamp(22px, 6vw, 30px); }
+  .club-site .clubHeaderBook { min-height: 40px; padding: 0 12px; gap: 8px; font-size: 13px; }
+  .club-site .clubHeaderToggle {
+    grid-area: toggle;
+    display: grid;
+    place-content: center;
+    gap: 5px;
+    width: 42px;
+    height: 42px;
+    border: 1px solid #49513f;
+    border-radius: 3px;
+    background: transparent;
+  }
+  .club-site .clubHeaderToggle i { width: 18px; height: 2px; background: #e9efdf; }
+  .club-site .clubHeaderToggle[aria-expanded="true"] i:first-child { transform: translateY(3.5px) rotate(45deg); }
+  .club-site .clubHeaderToggle[aria-expanded="true"] i:last-child { transform: translateY(-3.5px) rotate(-45deg); }
+  .club-site .clubHeaderNav { display: none; }
+  .club-site .clubHeaderNav[data-open="true"] {
+    position: absolute;
+    inset: 100% 0 auto;
+    display: grid;
+    align-items: stretch;
+    gap: 0;
+    padding: 4px 5% 12px;
+    max-height: calc(100dvh - var(--header-height));
+    overflow-y: auto;
+    background: #151914;
+    border-bottom: 1px solid #454b40;
+    box-shadow: 0 16px 24px rgb(0 0 0 / 22%);
+  }
+  .club-site .clubHeaderNav a { padding: 13px 0; border-bottom: 1px solid #30372e; }
+  .club-site .clubHeaderNav a:last-child { border-bottom: 0; }
+  .club-site .clubHeaderNav a[aria-current] { color: var(--lime); }
+  .club-site .clubHeaderNav a[aria-current]::after { display: none; }
+}
+
+.club-site .club-footer {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  color: var(--paper);
+  background: #11140f;
+  border-top: 1px solid #444a3b;
+}
+
+.club-site .club-footer::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22%;
+  height: 2px;
+  background: var(--lime);
+  content: "";
+}
+
+.club-site .club-footer .club-footer-inner {
+  display: block;
+}
+
+.club-site .club-footer-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(8rem, .65fr) minmax(10rem, .8fr);
+  gap: clamp(22px, 5vw, 80px);
+  padding-block: clamp(46px, 6vw, 94px);
+}
+
+.club-site .club-footer-wordmark {
+  display: inline-block;
+  padding-right: .12em;
+  color: var(--paper);
+  font: italic 800 clamp(60px, 6.4vw, 108px)/.93 var(--display);
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.club-site .club-footer-wordmark span,
+.club-site .club-footer-book span,
+.club-site .club-footer-credit span {
+  color: var(--lime);
+}
+
+.club-site .club-footer-identity p {
+  margin: 12px 0 0;
+  color: #b4b9ab;
+  font-size: 15px;
+}
+
+.club-site .club-footer-location {
+  display: inline-block;
+  margin-top: 6px;
+  color: #b4b9ab;
+  font-size: 14px;
+}
+
+.club-site .club-footer-location span {
+  color: var(--lime);
+}
+
+.club-site .club-footer-links,
+.club-site .club-footer-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.club-site .club-footer h2 {
+  margin: 0 0 12px;
+  color: #abae9f;
+  font: 600 11px/1.5 "DM Sans Variable", sans-serif;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.club-site .club-footer-links a,
+.club-site .club-footer-book {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  color: var(--paper);
+  font-size: 15px;
+}
+
+.club-site .club-footer-phone {
+  font: 700 clamp(26px, 2.1vw, 36px)/1.15 var(--display);
+  letter-spacing: -.01em;
+  white-space: nowrap;
+}
+
+.club-site .club-footer-book {
+  gap: 12px;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.club-site .club-footer-book span {
+  font-size: 19px;
+}
+
+.club-site .club-footer-base {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding-block: 22px;
+  border-top: 1px solid #373c31;
+  color: #b4b9ab;
+  font-size: 12px;
+}
+
+.club-site .club-footer-credit strong {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.club-site .club-footer-credit span {
+  margin-left: 3px;
+}
+
+.club-site .club-footer a:hover,
+.club-site .club-footer-book:hover,
+.club-site .club-footer-credit:hover strong {
+  color: var(--lime);
+}
+
+@media (max-width: 760px) {
+  .club-site .club-footer-main {
+    grid-template-columns: 1fr 1fr;
+    gap: 30px 20px;
+  }
+
+  .club-site .club-footer-identity {
+    grid-column: 1 / -1;
+  }
+
+  .club-site .club-footer-wordmark {
+    font-size: clamp(58px, 13vw, 80px);
+  }
+}
+
+@media (max-width: 460px) {
+  .club-site .club-footer-base {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.club-site { --header-height: 72px; font-family: "DM Sans Variable", "Inter Variable", sans-serif; font-size: 16px; line-height: 1.55; min-height: 100vh; }
+.club-site :is(#sports, #arena, #faq) { scroll-margin-top: var(--header-height); }
+.club-site .clubBrand { display: inline-flex; align-items: center; gap: 11px; white-space: nowrap; }
+.club-site .clubBrand strong { font: italic 800 32px/.9 var(--display); letter-spacing: -.04em; }
+.club-site .clubBrand strong span { color: var(--lime); }
+@media (max-width: 760px) { .club-site { --header-height: 64px; } .club-site .clubHeaderBrand strong { font-size: clamp(22px, 6vw, 30px); } }

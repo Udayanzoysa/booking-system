@@ -1,7 +1,7 @@
 import 'reflect-metadata';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { hashPassword } from './auth/password';
-import { PermissionCode } from './rbac/permissions';
+import { PermissionCode, WEB_CUSTOMER_ROLE_NAME } from './rbac/permissions';
 import { requireSampleDatabase } from './sample-database';
 
 const slug = 'techwing-auth-sample';
@@ -16,6 +16,24 @@ const staffPermissions = new Set<string>([
   PermissionCode.MANAGE_CUSTOMERS,
 ]);
 
+async function ensureCustomerRole(tx: Prisma.TransactionClient, tenantId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${tenantId}::uuid FOR UPDATE`;
+  const existing = await tx.role.findUnique({
+    where: { tenantId_name: { tenantId, name: WEB_CUSTOMER_ROLE_NAME } },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const permission = await tx.permission.upsert({
+    where: { tenantId_code: { tenantId, code: PermissionCode.CREATE_UNPAID_HOLD } },
+    create: { tenantId, code: PermissionCode.CREATE_UNPAID_HOLD },
+    update: {},
+    select: { id: true },
+  });
+  const role = await tx.role.create({ data: { tenantId, name: WEB_CUSTOMER_ROLE_NAME } });
+  await tx.rolePermission.create({ data: { tenantId, roleId: role.id, permissionId: permission.id } });
+}
+
 async function seed() {
   requireSampleDatabase();
 
@@ -27,7 +45,11 @@ async function seed() {
         data: [{ slug, name: 'Techwing Sample Arena', currency: 'LKR', unpaidHoldMinutes: 15 }],
         skipDuplicates: true,
       });
-      if (!tenant) return false;
+      if (!tenant) {
+        const existing = await tx.tenant.findUniqueOrThrow({ where: { slug }, select: { id: true } });
+        await ensureCustomerRole(tx, existing.id);
+        return false;
+      }
       const tenantId = tenant.id;
       const permissions = await tx.permission.createManyAndReturn({
         data: Object.values(PermissionCode).map((code) => ({ tenantId, code })),
@@ -44,6 +66,7 @@ async function seed() {
         });
         await tx.userRole.create({ data: { tenantId, userId: user.id, roleId: role.id } });
       }
+      await ensureCustomerRole(tx, tenantId);
       return true;
     });
 

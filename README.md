@@ -36,7 +36,11 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-Open [the local booking calendar](http://localhost:3001). The demo workspace uses temporary sample data. Select **Connect arena** to sign into the live backend or register a player account against an existing tenant. If your API is on another origin, set `NEXT_PUBLIC_BOOKING_API_ORIGIN` in `web/.env.local` and match `FRONTEND_ORIGIN` in the backend environment to the web origin. Restart the affected servers after configuration changes.
+Open [the Strikz Club homepage](http://localhost:3001). **Book your slot** opens the customer booking page at `/book`. The [staff booking calendar](http://localhost:3001/dashboard) is at `/dashboard`. Select **Connect arena** in the staff workspace to sign into the backend.
+
+Set `NEXT_PUBLIC_CUSTOMER_TENANT_SLUG` in `web/.env.local` to the venue tenant used for customer registration and bookings. Optionally set `NEXT_PUBLIC_CUSTOMER_BRANCH_ID` to select its branch. The local quick demo uses `techwing-auth-sample` when a customer tenant is omitted. Customer sessions are stored separately from staff sessions.
+
+If your API is on another origin, set `NEXT_PUBLIC_BOOKING_API_ORIGIN` in `web/.env.local` and match `FRONTEND_ORIGIN` in the backend environment to the web origin. Restart the affected servers after configuration changes. Docker builds accept the customer tenant and branch values from the matching Compose environment variables.
 
 ### Booking invoices
 
