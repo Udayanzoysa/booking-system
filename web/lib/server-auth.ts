@@ -6,6 +6,9 @@ import type { Principal, Session } from './session';
 import { canAccessSection, dashboardPath, hasDashboardAccess, type DashboardSection } from './dashboard-access';
 
 export const sessionCookieName = 'techwing-session';
+export const customerSessionCookieName = 'techwing-customer-session';
+export type SessionScope = 'staff' | 'customer';
+export function cookieForScope(scope: SessionScope) { return scope === 'customer' ? customerSessionCookieName : sessionCookieName; }
 export type AuthSession = { session: Session; principal: Principal };
 
 export class SessionServiceError extends Error {
@@ -67,8 +70,8 @@ export async function validateSession(token: string): Promise<AuthSession | null
   return { session: { token, name: principal.displayName, tenantSlug: principal.tenantSlug }, principal };
 }
 
-export async function readSession(): Promise<AuthSession | null> {
-  const cookie = (await cookies()).get(sessionCookieName)?.value;
+export async function readSession(scope: SessionScope = 'staff'): Promise<AuthSession | null> {
+  const cookie = (await cookies()).get(cookieForScope(scope))?.value;
   return cookie ? validateSession(cookie) : null;
 }
 

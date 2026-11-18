@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { CurrentUser, Public } from './auth.decorators';
 import type { AuthPrincipal } from './auth-principal';
-import { DemoLoginDto, LoginDto, RegisterDto } from './auth.dto';
+import { DemoLoginDto, GoogleLoginDto, LoginDto, RegisterDto } from './auth.dto';
+import { googleClientId } from './google-identity-verifier';
 import { AuthService } from './auth.service';
 
 @Controller('auth')
@@ -13,6 +14,26 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
+  }
+
+  @Public()
+  @Get('google/config')
+  googleConfig() {
+    const clientId = googleClientId();
+    return clientId ? { enabled: true, clientId } : { enabled: false };
+  }
+
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  google(@Body() dto: GoogleLoginDto) {
+    return this.auth.loginGoogle(dto);
+  }
+
+  @Post('google/link')
+  @HttpCode(HttpStatus.OK)
+  linkGoogle(@CurrentUser() principal: AuthPrincipal, @Body() dto: GoogleLoginDto) {
+    return this.auth.linkGoogle(principal, dto);
   }
 
   @Public()

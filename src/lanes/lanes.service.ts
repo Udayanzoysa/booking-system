@@ -32,6 +32,36 @@ export class LanesService {
     private readonly roster: RosterService,
   ) {}
 
+  private async publicArena(slug: string) {
+    if (slug.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new NotFoundException('Arena not found');
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { slug },
+      select: { id: true, name: true, currency: true, paymentSettings: { select: { contactPhone: true } },
+        branches: { where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, code: true, name: true, timeZone: true } } },
+    });
+    if (!tenant) throw new NotFoundException('Arena not found');
+    return tenant;
+  }
+
+  async publicTenant(slug: string) {
+    const tenant = await this.publicArena(slug);
+    return { name: tenant.name, currency: tenant.currency, branches: tenant.branches,
+      contactPhone: tenant.paymentSettings?.contactPhone || '070 126 1966' };
+  }
+
+  async publicAvailability(slug: string, branchId: string, query: TimeRangeDto) {
+    const tenant = await this.publicArena(slug);
+    if (!tenant.branches.some((branch) => branch.id === branchId)) throw new NotFoundException('Active branch not found');
+    const grid = await this.availability(tenant.id, branchId, query);
+    // Explicit public projection: do not expose customer, booking, staff, or tenant IDs.
+    return { branchId: grid.branchId, timeZone: grid.timeZone, currency: grid.currency,
+      contactPhone: tenant.paymentSettings?.contactPhone || '070 126 1966',
+      lanes: grid.lanes.map(({ id, name, type }) => ({ id, name, type })),
+      slots: grid.slots.map(({ id, laneId, startsAt, endsAt, status, price, kind, pricingTiers }) =>
+        ({ id, laneId, startsAt, endsAt, status, price, kind, pricingTiers })),
+    };
+  }
+
   list(tenantId: string, branchId: string, includeInactive: boolean) {
     return this.prisma.lane.findMany({
       where: {

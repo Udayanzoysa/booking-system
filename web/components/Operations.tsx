@@ -39,8 +39,8 @@ type Page<T> = { items: T[]; nextCursor: string | null };
 type Tenant = { name: string; unpaidHoldMinutes: number; currency: string };
 
 const sections = {
-  lanes: { label: 'Branches & lanes', description: 'Manage your venues, lanes, bookable time, and maintenance.', icon: Building2 },
-  pricing: { label: 'Lane pricing', description: 'Set weekly peak and off-peak rates in the branch time zone.', icon: Tag },
+  lanes: { label: 'Arena & ground', description: 'Manage your arena, Full Turf, bookable time, and maintenance.', icon: Building2 },
+  pricing: { label: 'Ground pricing', description: 'Set weekly peak and off-peak rates in the branch time zone.', icon: Tag },
   roster: { label: 'Staff roster', description: 'Schedule staff coverage for each branch.', icon: CalendarClock },
   customers: { label: 'Customers', description: 'Find and manage customers for assisted bookings.', icon: Users },
   access: { label: 'Staff & roles', description: 'Create staff accounts and manage what they can access.', icon: ShieldCheck },
@@ -213,8 +213,8 @@ function formatRange(startsAt: string, endsAt: string, timeZone: string) {
 
 function label(value: string) {
   const known: Record<string, string> = {
-    TURF_NET: 'Turf net',
-    BOWLING_MACHINE: 'Bowling machine',
+    TURF_NET: 'Indoor Ground',
+    BOWLING_MACHINE: 'Indoor Ground',
     OFF_PEAK: 'Off-peak',
     UNPRICED: 'Rate needed',
     HELD: 'Tentative hold',
@@ -263,13 +263,11 @@ function BranchForm({ branch, staff }: { branch?: Branch; staff: Staff[] }) {
 function LaneForm({ branchId, lane }: { branchId: string; lane?: Lane }) {
   const command = useCommand();
   return (
-    <CommandForm label={lane ? 'Save lane' : 'Add lane'} command={command} reset={!lane} onSubmit={(data) => lane
+    <CommandForm label={lane ? 'Save ground' : 'Add ground'} command={command} reset={!lane} onSubmit={(data) => lane
       ? command.request(`/lanes/${lane.id}`, 'PATCH', { name: textField(data, 'name'), isActive: data.has('isActive') })
-      : command.request('/lanes', 'POST', { branchId, name: textField(data, 'name'), type: textField(data, 'type') })}>
-      <Field label="Lane name"><input name="name" defaultValue={lane?.name} placeholder="Turf Net C" required maxLength={120} /></Field>
-      {lane ? <label className="ops-check"><input name="isActive" type="checkbox" defaultChecked={lane.isActive} /> Active lane</label> : (
-        <Field label="Lane type"><select name="type"><option value="TURF_NET">Turf net</option><option value="BOWLING_MACHINE">Bowling machine</option></select></Field>
-      )}
+      : command.request('/lanes', 'POST', { branchId, name: textField(data, 'name'), type: 'TURF_NET' })}>
+      <Field label="Ground name"><input name="name" defaultValue={lane?.name ?? 'Full Turf'} placeholder="Full Turf" required maxLength={120} /></Field>
+      {lane && <label className="ops-check"><input name="isActive" type="checkbox" defaultChecked={lane.isActive} /> Active ground</label>}
     </CommandForm>
   );
 }
@@ -289,10 +287,10 @@ function SlotSchedule({ branch, lanes }: { branch: Branch; lanes: Lane[] }) {
         <ResourceState resource={availability} />
         <Feedback command={command} />
         {slots.length > 0 ? (
-          <div className="ops-table-scroll ops-slot-scroll"><table><thead><tr><th>Lane</th><th>Time</th><th>Status</th>{canManage && <th><span className="ops-sr-only">Actions</span></th>}</tr></thead>
+          <div className="ops-table-scroll ops-slot-scroll"><table><thead><tr><th>Ground</th><th>Time</th><th>Status</th>{canManage && <th><span className="ops-sr-only">Actions</span></th>}</tr></thead>
             <tbody>{slots.map((slot) => (
               <tr key={slot.id}>
-                <td>{lanes.find(({ id }) => id === slot.laneId)?.name ?? 'Lane'}</td>
+                <td>{lanes.find(({ id }) => id === slot.laneId)?.name ?? 'Full Turf'}</td>
                 <td>{formatRange(slot.startsAt, slot.endsAt, branch.timeZone)}</td>
                 <td><Pill tone={slot.status === 'AVAILABLE' ? 'green' : slot.status === 'MAINTENANCE' ? 'grey' : 'amber'}>{label(slot.status)}</Pill></td>
                 {canManage && <td><button className="ops-icon-button ops-danger" type="button" aria-label="Remove scheduled slot" disabled={command.pending} onClick={() => {
@@ -318,7 +316,7 @@ function SlotForm({ branch, lanes }: { branch: Branch; lanes: Lane[] }) {
       endsAt: branchDateTime(textField(data, 'endsAt'), branch.timeZone),
       kind: textField(data, 'kind'),
     })}>
-      <Field label="Lane"><select name="lane" required>{lanes.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select></Field>
+      {lanes.length === 1 ? <><input type="hidden" name="lane" value={lanes[0].id}/><p className="ops-notice">Indoor Ground · {lanes[0].name}</p></> : <Field label="Ground"><select name="lane" required>{lanes.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}</select></Field>}
       <Field label="Slot type"><select name="kind"><option value="BOOKABLE">Bookable</option><option value="MAINTENANCE">Maintenance</option></select></Field>
       <Field label="Starts"><input name="startsAt" type="datetime-local" required /></Field>
       <Field label="Ends"><input name="endsAt" type="datetime-local" required /></Field>
@@ -345,7 +343,7 @@ function Venues({ branch, branches, staff, lanes }: { branch?: Branch; branches:
               <Pill tone={item.isActive ? 'green' : 'grey'}>{item.isActive ? 'Active' : 'Inactive'}</Pill>
               {canEditBranch && <button type="button" className="ops-icon-button" aria-label={`Edit ${item.name}`} onClick={() => setSelectedBranch(item.id)}><Pencil size={15} /></button>}
             </div>
-          )) : <Notice>Create your first branch to start scheduling lanes.</Notice>}
+          )) : <Notice>Create your arena to start scheduling Full Turf.</Notice>}
         </ShellCard>
         {canEditBranch && <ShellCard title={editingBranch ? 'Edit branch' : 'New branch'} action={editingBranch && (
           <button type="button" className="ops-text-button" onClick={() => setSelectedBranch(undefined)}><Plus size={15} /> New branch</button>
@@ -353,17 +351,17 @@ function Venues({ branch, branches, staff, lanes }: { branch?: Branch; branches:
       </div>
       {branch && <>
         <div className="ops-layout">
-          <ShellCard title={`Lanes · ${branch.name}`}>
+          <ShellCard title={`Indoor ground · ${branch.name}`}>
             {lanes.length ? lanes.map((lane) => (
               <div key={lane.id} className="ops-list-row">
                 <div className="ops-row-main"><strong>{lane.name}</strong><span>{label(lane.type)}</span></div>
                 <Pill tone={lane.isActive ? 'green' : 'grey'}>{lane.isActive ? 'Active' : 'Inactive'}</Pill>
                 {canEditLane && <button type="button" className="ops-icon-button" aria-label={`Edit ${lane.name}`} onClick={() => setSelectedLane(lane.id)}><Pencil size={15} /></button>}
               </div>
-            )) : <Notice>No lanes at this branch yet.</Notice>}
+            )) : <Notice>No indoor ground at this arena yet.</Notice>}
           </ShellCard>
-          {canEditLane && (branch.isActive || editingLane) && <ShellCard title={editingLane ? 'Edit lane' : 'New lane'} action={editingLane && (
-            <button type="button" className="ops-text-button" onClick={() => setSelectedLane(undefined)}><Plus size={15} /> New lane</button>
+          {canEditLane && (branch.isActive || editingLane) && <ShellCard title={editingLane ? 'Edit ground' : 'New ground'} action={editingLane && (
+            <button type="button" className="ops-text-button" onClick={() => setSelectedLane(undefined)}><Plus size={15} /> New ground</button>
           )}><LaneForm key={editingLane?.id ?? 'new'} branchId={branch.id} lane={editingLane} /></ShellCard>}
         </div>
         <SlotSchedule branch={branch} lanes={lanes} />
@@ -414,7 +412,7 @@ function RatesEditor({ rates, laneId }: { rates: Rate[]; laneId: string }) {
     setDraft((current) => current.map((rate, row) => row === index ? { ...rate, ...change } : rate));
   }
   return (
-    <CommandForm command={command} label="Save lane rates" onSubmit={() => {
+    <CommandForm command={command} label="Save ground rates" onSubmit={() => {
       if (!draft.length) throw new Error('Add at least one pricing window.');
       return command.request(`/lanes/${laneId}/pricing`, 'PUT', {
         rules: draft.map(({ dayOfWeek, tier, startMinute, endMinute, pricePerHour }) => ({ dayOfWeek, tier, startMinute, endMinute, pricePerHour })),
@@ -454,7 +452,7 @@ function Pricing({ lanes }: { lanes: Lane[] }) {
   ]) : [];
   return (
     <ShellCard title="Weekly rate schedule" action={lanes.length > 0 && (
-      <select aria-label="Pricing lane" value={laneId} onChange={(event) => setSelected(event.target.value)}>
+      <select aria-label="Pricing ground" value={laneId} onChange={(event) => setSelected(event.target.value)}>
         {lanes.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
       </select>
     )}>
@@ -463,7 +461,7 @@ function Pricing({ lanes }: { lanes: Lane[] }) {
       </tbody></table></div> : <>
         <ResourceState resource={pricing} />
         {!canEdit && <Notice>You need pricing access to view and edit rate schedules.</Notice>}
-        {canEdit && !laneId && <Notice>Add a lane before configuring pricing.</Notice>}
+        {canEdit && !laneId && <Notice>Add Full Turf before configuring pricing.</Notice>}
         {pricing.data && laneId && <RatesEditor key={laneId} rates={pricing.data} laneId={laneId} />}
       </>}
     </ShellCard>

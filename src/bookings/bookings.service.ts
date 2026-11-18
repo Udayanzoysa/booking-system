@@ -75,16 +75,19 @@ export class BookingsService {
       orderBy: { id: 'desc' },
       take: limit + 1,
       include: {
-        slot: true,
+        slot: { ...slotDetails },
         leadOwner: { select: { displayName: true } },
         creator: { select: { displayName: true } },
         customer: canSeeNames ? { select: { name: true } } : false,
+        bankTransferSlips: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, reviewNote: true, amount: true, createdAt: true } },
       },
     });
     const bookings = rows.slice(0, limit);
     return {
-      bookings: bookings.map(({ leadOwner, creator, customer, ...booking }) => ({
+      bookings: bookings.map(({ leadOwner, creator, customer, bankTransferSlips, slot, ...booking }) => ({
         ...this.summary(booking),
+        slot: { id: slot.id, laneId: slot.laneId, startsAt: slot.startsAt, endsAt: slot.endsAt, laneName: slot.lane.name, timeZone: slot.lane.branch.timeZone },
+        latestBankTransferSlip: bankTransferSlips[0] ?? null,
         ...(canSeeNames ? {
           leadOwnerName: leadOwner.displayName,
           creatorName: creator.displayName,
@@ -105,15 +108,17 @@ export class BookingsService {
         customer: canSeeNames ? { select: { name: true } } : false,
         leadOwner: canSeeNames ? { select: { displayName: true } } : false,
         creator: canSeeNames ? { select: { displayName: true } } : false,
+        bankTransferSlips: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, reviewNote: true, amount: true, createdAt: true } },
       },
     });
     if (!booking) throw new NotFoundException('Booking not found');
-    const { customer, leadOwner, creator, slot, ...record } = booking;
+    const { customer, leadOwner, creator, slot, bankTransferSlips, ...record } = booking;
     return {
       ...await this.withStaffing(this.prisma, record, slot),
       customerName: customer?.name,
       leadOwnerName: leadOwner?.displayName,
       creatorName: creator?.displayName,
+      latestBankTransferSlip: bankTransferSlips[0] ?? null,
     };
   }
 
@@ -121,6 +126,11 @@ export class BookingsService {
     const { tenantId, userId } = principal;
     const assisted = Boolean(dto.customerId);
     if (assisted) requirePermission(principal, PermissionCode.MANAGE_BOOKINGS);
+    const canAssignLeadOwner = principal.permissions.has(PermissionCode.MANAGE_RBAC)
+      || principal.permissions.has(PermissionCode.MANAGE_USERS);
+    if (assisted && !canAssignLeadOwner && dto.leadOwnerId && dto.leadOwnerId.toLowerCase() !== userId) {
+      throw new BadRequestException('Staff bookings must be attributed to the signed-in staff member');
+    }
     if (dto.initialPayment && dto.initialWalletPaymentKey) {
       throw new BadRequestException('Select a single initial payment method');
     }
@@ -139,8 +149,8 @@ export class BookingsService {
     const result = await this.prisma.$transaction(async (tx) => {
       await lockLanes(tx, tenantId, [laneId]);
       const slot = await this.readSlot(tx, tenantId, dto.slotId, laneId);
-      const leadOwnerId = assisted ? dto.leadOwnerId : slot.lane.branch.webLeadOwnerId;
-      const leadSource = assisted ? dto.leadSource : LeadSource.WEB;
+      const leadOwnerId = assisted ? (dto.leadOwnerId ?? userId) : slot.lane.branch.webLeadOwnerId;
+      const leadSource = assisted ? (dto.leadSource ?? LeadSource.WALK_IN) : LeadSource.WEB;
       if (!leadSource || !leadOwnerId) {
         throw new BadRequestException(assisted
           ? 'Staff bookings require a lead source and lead owner'

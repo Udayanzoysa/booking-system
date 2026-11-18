@@ -234,7 +234,7 @@ function SiteFooter() {
           <a className="club-footer-location" href={directions} target="_blank" rel="noopener noreferrer">Pitipana, Homagama · Near NSBM <span aria-hidden="true">↗</span></a>
         </div>
         <nav className="club-footer-links" aria-label="Footer navigation">
-          <h2>Explore</h2><a href="#sports">Sports</a><a href="#arena">The arena</a><a href="#faq">FAQs</a><Link href="/dashboard">Staff dashboard</Link>
+          <h2>Explore</h2><a href="#sports">Sports</a><a href="#arena">The arena</a><a href="#faq">FAQs</a><Link href="/book">Book a session</Link>
         </nav>
         <div className="club-footer-contact">
           <h2>Bookings</h2><a className="club-footer-phone" href="tel:+94701261966">070 126 1966</a>

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .sample-auth/
+.local-strikz/
+uploads/
 .env
 .env.*
 !.env.example

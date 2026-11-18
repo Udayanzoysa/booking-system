@@ -89,3 +89,57 @@ button:disabled{cursor:not-allowed;opacity:.57}
 @media(max-width:540px){.demo-account-picker{gap:3px;padding:6px}.demo-account-picker>svg:first-child{display:none}.demo-account-picker select{font-size:11px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:0s!important}}
 
+.bank-review{background:white;border:1px solid var(--line);border-radius:14px;margin-bottom:25px;overflow:hidden}
+.bank-review-header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 22px;border-bottom:1px solid var(--line)}
+.bank-review-heading{display:flex;align-items:center;gap:11px;min-width:0}
+.bank-review-icon{display:grid;place-items:center;flex:none;width:42px;height:42px;border-radius:11px;color:#087f9b;background:#e9f8fb}
+.bank-review h2{font-size:18px;letter-spacing:-.45px;margin:0;font-weight:750}
+.bank-review-header p{font-size:12px;color:var(--muted);margin:3px 0 0}
+.bank-review-tools{display:flex;align-items:end;gap:8px;flex:none}
+.bank-review-tools label{display:grid;gap:4px;font-size:11px;color:var(--muted);font-weight:650}
+.bank-review-tools select{background:white;border:1px solid #d7e3ec;border-radius:7px;padding:7px 10px;font-size:12px;color:var(--ink)}
+.bank-review-secondary,.bank-review-approve,.bank-review-reject{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;border:1px solid #d7e3ec;border-radius:7px;padding:7px 10px;background:white;color:#274a63;font-size:12px;font-weight:650;line-height:1.4}
+.bank-review-secondary:hover{background:#f3f8fc}
+.bank-review-approve{color:white;background:#087f69;border-color:#087f69}
+.bank-review-approve:hover{background:#076955}
+.bank-review-reject{color:#ad3138;background:#fff6f5;border-color:#edcbcd}
+.bank-review-reject:hover{background:#ffebe9}
+.bank-review-empty{padding:24px;color:var(--muted);font-size:13px;margin:0;text-align:center}
+.bank-review-list{list-style:none;padding:0;margin:0;max-height:580px;overflow:auto}
+.bank-review-list>li{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:17px 22px;border-bottom:1px solid var(--line)}
+.bank-review-list>li:last-child{border-bottom:0}
+.bank-review-info{min-width:0;flex:1}
+.bank-review-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bank-review-row>strong{font-size:13px;color:var(--ink)}
+.bank-review-info p{font-size:12px;color:#49647d;margin:5px 0;overflow-wrap:anywhere}
+.bank-review-info .bank-review-meta{font-size:11px;color:var(--muted)}
+.bank-review-info .bank-review-note{color:#435a71;background:#f5f8fb;padding:7px 10px;border-radius:6px;max-width:700px}
+.bank-review-badge{font-size:10px;font-weight:700;line-height:1.35;border-radius:20px;padding:4px 8px;background:#fff4dc;color:#91651f}
+.bank-review-approved{color:#08735b;background:#e7f8ef}
+.bank-review-rejected{color:#a62b33;background:#fff0ee}
+.bank-review-actions{display:grid;justify-items:end;gap:9px;flex:none}
+.bank-review-actions>strong{font-size:15px;font-weight:750;font-variant-numeric:tabular-nums}
+.bank-review-actions>div{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.bank-review-link{border:0;background:none;padding:2px 0;color:#007ca3;font-size:11px;font-weight:650;text-align:left}
+.bank-review-link:hover{text-decoration:underline}
+.bank-review-error,.bank-review-notice{border-radius:8px;margin:12px 20px;padding:10px 12px;font-size:12px;color:#a52d35;background:#fff0f0;border:1px solid #f1d3d4}
+.bank-review-notice{background:#ebf9f2;color:#127355;border-color:#c8e9db}
+.bank-review-dialog,.bank-slip-preview{color:var(--ink);background:white;border:1px solid var(--line);border-radius:15px;width:min(485px,calc(100% - 28px));max-height:calc(100dvh - 28px);padding:0;box-shadow:0 24px 80px #102c3b3b}
+.bank-review-dialog::backdrop,.bank-slip-preview::backdrop{background:#0a1a2d86;backdrop-filter:blur(3px)}
+.bank-review-dialog form{padding:23px;display:grid;gap:16px}
+.bank-review-dialog header,.bank-slip-preview header{display:flex;align-items:center;gap:12px}
+.bank-review-dialog header h2,.bank-slip-preview h2{font-size:20px;letter-spacing:-.5px;margin:0;flex:1;font-weight:750}
+.bank-review-dialog header>button,.bank-slip-preview header>button{border:0;color:var(--muted);background:none;display:grid;place-items:center;padding:4px}
+.bank-review-dialog form>p{font-size:13px;color:var(--muted);margin:0;line-height:1.6}
+.bank-review-dialog label{display:grid;gap:7px;font-size:12px;font-weight:650}
+.bank-review-dialog textarea{border:1px solid #d7e3ec;border-radius:8px;padding:10px;font-size:13px;resize:vertical;min-height:85px;font-weight:400}
+.bank-review-dialog .bank-review-error{margin:0;color:#a52d35}
+.bank-review-dialog footer{display:flex;gap:8px;justify-content:flex-end}
+.bank-slip-preview{width:min(900px,calc(100% - 24px));padding:20px}
+.bank-slip-preview header>a{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:650;color:#007ca3;text-decoration:none}
+.bank-slip-preview>p{font-size:12px;color:var(--muted);overflow-wrap:anywhere;margin:8px 0 15px}
+.bank-slip-preview>img{display:block;max-width:100%;max-height:calc(100dvh - 160px);object-fit:contain;margin:auto}
+.bank-slip-preview>iframe{display:block;border:1px solid var(--line);width:100%;height:min(700px,calc(100dvh - 160px));background:#f3f5f7}
+@media(max-width:940px){.bank-review-header{padding:17px}.bank-review-list>li{align-items:flex-start;padding:16px;gap:14px;flex-direction:column}.bank-review-actions{width:100%;display:flex;align-items:center;justify-content:space-between}.bank-review-actions>div{justify-content:flex-start}}
+@media(max-width:540px){.bank-review-header{align-items:flex-start;flex-direction:column;gap:12px}.bank-review-tools{width:100%;justify-content:flex-end}.bank-review-tools label{margin-right:auto}.bank-review-actions{align-items:flex-start;flex-direction:column;gap:8px}.bank-review-dialog form{padding:18px}}
+

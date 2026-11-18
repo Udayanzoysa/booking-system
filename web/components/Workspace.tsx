@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CalendarDays, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Clock3, DoorOpen,
+  CalendarDays, ChevronDown, ChevronRight, CircleHelp, ClipboardList, Clock3, CreditCard, DoorOpen,
   FileText, LayoutGrid, LogOut, Menu, Radio, Settings2, ShieldCheck, SlidersHorizontal, Users, X,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -17,11 +17,13 @@ import { BookingDialog, type Booking, type BookingActions, type BookingDialogMod
 import { BookingList } from './BookingList';
 import Operations from './Operations';
 import Invoices, { InvoiceDialog } from './Invoices';
+import BankTransferReviews from './BankTransferReviews';
+import { PaymentSettings } from './PaymentSettings';
 import type { Principal, Session } from '../lib/session';
 
 const localTimeZone = 'Asia/Colombo';
 const management = [
-  { id: 'lanes', label: 'Branches & lanes', icon: LayoutGrid, permissions: ['MANAGE_TENANT', 'MANAGE_LANES'] },
+  { id: 'lanes', label: 'Arena & ground', icon: LayoutGrid, permissions: ['MANAGE_TENANT', 'MANAGE_LANES'] },
   { id: 'pricing', label: 'Pricing', icon: SlidersHorizontal, permissions: ['MANAGE_PRICING'] },
   { id: 'roster', label: 'Staff roster', icon: Clock3, permissions: ['MANAGE_ROSTER'] },
   { id: 'customers', label: 'Customers', icon: Users, permissions: ['MANAGE_CUSTOMERS', 'VIEW_CUSTOMER_PHONE'] },
@@ -171,6 +173,7 @@ export default function Workspace({
     socket.on('availability.changed', () => {
       void cache.invalidateQueries({ queryKey: ['session', token, 'availability'] });
       void cache.invalidateQueries({ queryKey: ['session', token, 'bookings'] });
+      void cache.invalidateQueries({ queryKey: ['session', token, 'bank-transfer-slips'] });
     });
     return () => { socket.removeAllListeners(); socket.disconnect(); setConnected(false); };
   }, [token, signedIn, cache]);
@@ -237,6 +240,21 @@ export default function Workspace({
       const result = await api<{ booking: Booking }>('/payments/' + id + '/' + kind, token, json('POST', payload));
       refresh();
       return api<Booking>('/bookings/' + id, token).catch(() => result.booking);
+    },
+    async uploadSlip(id, payload, file) {
+      const body = new FormData();
+      body.set('attachment', file);
+      body.set('amount', payload.amount);
+      body.set('idempotencyKey', payload.idempotencyKey);
+      body.set('reviewDecision', payload.reviewDecision);
+      if (payload.reference) body.set('reference', payload.reference);
+      const response = await fetch(apiOrigin + '/api/payments/' + id + '/bank-transfer-slips', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null) as { message?: string | string[] } | null;
+        throw new ApiError(response.status, [failure?.message ?? 'Could not save the transfer slip.'].flat().join(' · '));
+      }
+      refresh();
+      return api<Booking>('/bookings/' + id, token);
     },
     ...(permissions.includes('MANAGE_CUSTOMERS') ? {
       async createCustomer(payload: {name: string; phone?: string}) {
@@ -310,6 +328,7 @@ export default function Workspace({
         {(management.some((item) => item.permissions.some((permission) => permissions.includes(permission)))) && <p className="nav-divider">MANAGEMENT</p>}
         {management.filter((item) => item.permissions.some((permission) => permissions.includes(permission))).map(({ id, label, icon: Icon }) =>
           <button key={id} type="button" className={section === id ? 'active' : ''} onClick={() => chooseSection(id)}><Icon size={17}/>{label}</button>)}
+        {permissions.includes('MANAGE_TENANT') && <button type="button" className={section === 'payments' ? 'active' : ''} onClick={() => chooseSection('payments')}><CreditCard size={17}/>Payment settings</button>}
       </div>
       <div className="nav-bottom">
         <div className="nav-connection"><Radio size={17}/><div><strong>{connected ? 'Live availability' : 'Arena workspace'}</strong><small>{branch?.name ?? 'Booking server'}</small></div></div>
@@ -342,11 +361,13 @@ export default function Workspace({
                 onNewBooking={newBooking} canBook={canCreate && Boolean(branch)}
                 loading={branchQuery.isLoading || gridQuery.isLoading} />}
         </>}
-        {section === 'bookings' && <BookingList bookings={bookings.filter((item) => !item.id.startsWith('released-'))}
+        {section === 'bookings' && <>
+          {permissions.includes('RECORD_PAYMENT') && <BankTransferReviews token={token} timezone={timezone} onChanged={refresh} onViewBooking={(id) => { void openLinkedBooking(id); }}/>}
+          <BookingList bookings={bookings.filter((item) => !item.id.startsWith('released-'))}
           lanes={lanes} timezone={timezone} staff={staff} customers={customers} leadOwners={leadOwners}
           onSelect={(booking) => setSelection({ kind: 'detail', booking })}
           onCreate={canCreate && branch ? newBooking : undefined}
-          nextPage={bookingQuery.hasNextPage ? () => { void bookingQuery.fetchNextPage(); } : undefined} loading={bookingQuery.isLoading || bookingQuery.isFetchingNextPage}/>}
+          nextPage={bookingQuery.hasNextPage ? () => { void bookingQuery.fetchNextPage(); } : undefined} loading={bookingQuery.isLoading || bookingQuery.isFetchingNextPage}/></>}
         {section === 'invoices' && <Invoices token={token} permissions={permissions} bookings={bookings}
           branches={branches} onConnect={signIn} onChanged={refresh}
           onViewBooking={!staff || permissions.includes('MANAGE_BOOKINGS') || permissions.includes('VIEW_BOOKINGS')
@@ -354,6 +375,7 @@ export default function Workspace({
           onMoreBookings={bookingQuery.hasNextPage ? () => { void bookingQuery.fetchNextPage(); } : undefined}/>}
         {currentSection && <Operations section={currentSection.id} token={token} branchId={branch?.id ?? ''} permissions={permissions}
           demo={false} onChange={refresh} onConnect={signIn}/>}
+        {section === 'payments' && permissions.includes('MANAGE_TENANT') && <PaymentSettings token={token}/>}
         </>}
       </main>
     </div>

@@ -58,8 +58,11 @@ export class CustomersService {
     return maskPhone(customer);
   }
 
-  own(tenantId: string, userId: string) {
-    return this.prisma.customer.findUniqueOrThrow({ where: { tenantId_userId: { tenantId, userId } } });
+  async own(tenantId: string, userId: string) {
+    const { user, ...customer } = await this.prisma.customer.findUniqueOrThrow({
+      where: { tenantId_userId: { tenantId, userId } }, include: { user: { select: { googleSubject: true } } },
+    });
+    return { ...customer, googleLinked: Boolean(user?.googleSubject) };
   }
 
   updateOwn(tenantId: string, userId: string, dto: UpdateOwnCustomerDto) {

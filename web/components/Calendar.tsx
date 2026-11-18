@@ -53,10 +53,7 @@ type CalendarProps = {
 type DateRange = { start: number; end: number };
 type DaySlot = DateRange & { slot: CalendarSlot };
 type StatusFilter = CalendarStatus | "ALL" | "UNPAID";
-type LaneFilter = CalendarLane["type"] | "ALL";
-
 const HOUR_HEIGHT = 67;
-const LANE_LABEL = { TURF_NET: "Turf net", BOWLING_MACHINE: "Bowling machine" };
 
 const STATUS: Record<CalendarStatus, { label: string; css: string }> = {
   AVAILABLE: { label: "Available", css: "available" },
@@ -187,7 +184,6 @@ export default function Calendar({
   branchName, branchControl, loading, canBook = true,
 }: CalendarProps) {
   const [view, setView] = useState<"DAY" | "WEEK">("DAY");
-  const [laneFilter, setLaneFilter] = useState<LaneFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const week = useMemo(() => weekOf(date), [date]);
   const clock = useMemo(() => calendarClock(timeZone), [timeZone]);
@@ -210,7 +206,7 @@ export default function Calendar({
   }, [slots, clock, week]);
 
   const daily = daySlots.get(date) ?? [];
-  const displayLanes = lanes.filter((lane) => laneFilter === "ALL" || lane.type === laneFilter);
+  const displayLanes = lanes;
   const visibleLanes = new Set(displayLanes.map((lane) => lane.id));
   const visibleSlots = daily.filter(({ slot }) => visibleLanes.has(slot.laneId) && matchesStatus(statusFilter, slot));
   const reservations = daily.filter(({ slot }) => isReservation(slot));
@@ -231,7 +227,7 @@ export default function Calendar({
   const stats = [
     { label: date === today ? "Bookings today" : "Daily bookings", value: reservations.length,
       foot: confirmed + " confirmed · " + (reservations.length - confirmed) + " on hold", Icon: CalendarDays, color: "blue" },
-    { label: "Lane utilization", value: utilization + "%", foot: "Of scheduled lane time", Icon: Activity, color: "violet" },
+    { label: "Ground utilization", value: utilization + "%", foot: "Of scheduled ground time", Icon: Activity, color: "violet" },
     { label: "Payments received", value: money.format(received), foot: "For the selected day", Icon: CircleDollarSign, color: "green" },
     { label: "Needs attention", value: pending.length, foot: pending.length ? "Holds and outstanding balances" : "No outstanding bookings", Icon: Clock3, color: "amber" },
   ];
@@ -264,7 +260,7 @@ export default function Calendar({
       </section>
 
       <div className="cal-body">
-        <section className="cal-panel" aria-label="Lane availability" aria-busy={loading}>
+        <section className="cal-panel" aria-label="Indoor ground availability" aria-busy={loading}>
           <div className="cal-toolbar">
             <div className="cal-toolbar-left">
               <div className="cal-nav">
@@ -275,14 +271,6 @@ export default function Calendar({
               <button type="button" className="cal-today" onClick={() => onDateChange(today)}>Today</button>
             </div>
             <div className="cal-toolbar-right">
-              <label className="cal-select">
-                <select aria-label="Lane type" value={laneFilter} onChange={(event) => setLaneFilter(event.target.value as LaneFilter)}>
-                  <option value="ALL">All lane types</option>
-                  <option value="TURF_NET">Turf nets</option>
-                  <option value="BOWLING_MACHINE">Bowling machines</option>
-                </select>
-                <ChevronDown size={13} aria-hidden="true" />
-              </label>
               <label className="cal-select">
                 <select aria-label="Booking status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
                   <option value="ALL">All statuses</option>
@@ -323,7 +311,7 @@ export default function Calendar({
           {loading ? (
             <div className="cal-empty"><CalendarDays size={25}/><strong>Loading availability…</strong></div>
           ) : displayLanes.length === 0 ? (
-            <div className="cal-empty"><Grid2X2 size={25}/><strong>No lanes to display</strong><span>Try another lane type or branch.</span></div>
+            <div className="cal-empty"><Grid2X2 size={25}/><strong>No ground to display</strong><span>Select an active arena to check its schedule.</span></div>
           ) : view === "WEEK" ? (
             <div className="cal-overflow">
               <div className="cal-weekgrid">
@@ -354,10 +342,8 @@ export default function Calendar({
                   <div className="cal-time-head">TIME</div>
                   {displayLanes.map((lane) => (
                     <div key={lane.id} className="cal-lane-head">
-                      <span className={"cal-lane-icon " + (lane.type === "BOWLING_MACHINE" ? "cal-machine" : "")}>
-                        {lane.type === "TURF_NET" ? <Grid2X2 size={15} aria-hidden="true" /> : <Zap size={15} aria-hidden="true" />}
-                      </span>
-                      <div><strong>{lane.name}</strong><small>{LANE_LABEL[lane.type]}</small></div>
+                      <span className="cal-lane-icon"><Grid2X2 size={15} aria-hidden="true" /></span>
+                      <div><strong>{lane.name}</strong><small>Indoor Ground</small></div>
                     </div>
                   ))}
                 </div>
@@ -411,7 +397,7 @@ export default function Calendar({
                     <div className="cal-overlay-empty"><strong>No slots scheduled</strong><span>Select another date to check availability.</span></div>
                   )}
                   {daily.length > 0 && visibleSlots.length === 0 && (
-                    <div className="cal-overlay-empty"><strong>No slots match these filters</strong><button type="button" onClick={() => { setStatusFilter("ALL"); setLaneFilter("ALL"); }}>Clear filters</button></div>
+                    <div className="cal-overlay-empty"><strong>No slots match this filter</strong><button type="button" onClick={() => setStatusFilter("ALL")}>Clear filter</button></div>
                   )}
                 </div>
               </div>
@@ -424,7 +410,7 @@ export default function Calendar({
             <div className="cal-rail-heading"><h2>Daily snapshot</h2><span>{formatDay(date, { month: "short", day: "numeric" })}</span></div>
             <div className="cal-rail-stat">
               <span className="cal-icon cal-icon-blue"><Grid2X2 size={16}/></span>
-              <div><strong>{lanes.length} {lanes.length === 1 ? "lane" : "lanes"}</strong><small>{branchName || "Selected branch"}</small></div>
+              <div><strong>{lanes.length === 1 ? "Full Turf" : lanes.length + " grounds"}</strong><small>{branchName || "Selected branch"}</small></div>
             </div>
             <div className="cal-rail-stat">
               <span className="cal-icon cal-icon-green"><Check size={16}/></span>
@@ -435,8 +421,8 @@ export default function Calendar({
               <div><strong>{pending.length} need attention</strong><small>Holds and payments due</small></div>
             </div>
             <div className="cal-rail-utilization">
-              <div><span>Lane utilization</span><strong>{utilization}%</strong></div>
-              <progress value={utilization} max={100} aria-label="Lane utilization"/>
+              <div><span>Ground utilization</span><strong>{utilization}%</strong></div>
+              <progress value={utilization} max={100} aria-label="Ground utilization"/>
             </div>
           </section>
 
@@ -445,7 +431,7 @@ export default function Calendar({
             {pending.length === 0 && <p className="cal-no-pending">No pending payments.</p>}
             {pending.sort((first, second) => first.start - second.start).slice(0, 3).map(({ slot, start }) => {
               const details = <><span className={"cal-dot is-" + STATUS[slot.status].css} /><span>
-                <strong>{slot.booking?.label || lanes.find((lane) => lane.id === slot.laneId)?.name || "Lane booking"}</strong>
+                <strong>{slot.booking?.label || lanes.find((lane) => lane.id === slot.laneId)?.name || "Ground booking"}</strong>
                 <small>{slotTime(start)} · {slot.status === "HELD" ? "Tentative hold" : "Balance due"}</small>
               </span></>;
               return slot.booking
@@ -453,7 +439,7 @@ export default function Calendar({
                 : <div key={slot.id} className="cal-follow">{details}</div>;
             })}
             {pending.length > 0 && (
-              <button type="button" className="cal-link" onClick={() => { setView("DAY"); setStatusFilter("UNPAID"); setLaneFilter("ALL"); }}>
+              <button type="button" className="cal-link" onClick={() => { setView("DAY"); setStatusFilter("UNPAID"); }}>
                 View payments due <ArrowRight size={14} />
               </button>
             )}

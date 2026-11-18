@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authRequest, readSession, sessionCookieName, SessionServiceError, validateSession } from '../../../lib/server-auth';
+import { authRequest, cookieForScope, readSession, SessionServiceError, validateSession, type SessionScope } from '../../../lib/server-auth';
+import { clearGoogleChallenge, verifyGoogleChallenge } from '../../../lib/google-challenge';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +17,14 @@ function sameOrigin(request: NextRequest): boolean {
   return origin === request.nextUrl.origin;
 }
 
-function clearSession(response: NextResponse) {
-  response.cookies.set(sessionCookieName, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
+function scopeOf(request: NextRequest): SessionScope {
+  const scope = request.nextUrl.searchParams.get('scope');
+  if (scope && !['staff', 'customer'].includes(scope)) throw new SessionServiceError(400, 'Choose a staff or customer session.');
+  return scope === 'customer' ? 'customer' : 'staff';
+}
+
+function clearSession(response: NextResponse, scope: SessionScope) {
+  response.cookies.set(cookieForScope(scope), '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 });
   return response;
 }
 
@@ -27,10 +34,11 @@ function failure(error: unknown) {
   return NextResponse.json({ message }, { status, headers: responseHeaders });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const auth = await readSession();
-    if (!auth) return clearSession(NextResponse.json({ message: 'Sign in to continue.' }, { status: 401, headers: responseHeaders }));
+    const scope = scopeOf(request);
+    const auth = await readSession(scope);
+    if (!auth) return clearSession(NextResponse.json({ message: 'Sign in to continue.' }, { status: 401, headers: responseHeaders }), scope);
     return NextResponse.json(auth, { headers: responseHeaders });
   } catch (error) {
     return failure(error);
@@ -44,38 +52,51 @@ export async function POST(request: NextRequest) {
   }
   const body: unknown = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || !('action' in body)
-    || typeof body.action !== 'string' || !['login', 'register'].includes(body.action)) {
-    return NextResponse.json({ message: 'Choose login or register.' }, { status: 400, headers: responseHeaders });
+    || typeof body.action !== 'string' || !['login', 'register', 'google', 'link-google'].includes(body.action)) {
+    return NextResponse.json({ message: 'Choose a sign-in method.' }, { status: 400, headers: responseHeaders });
   }
   const fields = body as Record<string, unknown>;
-  const payload = {
-    tenantSlug: fields.tenantSlug,
-    email: fields.email,
-    password: fields.password,
-    ...(fields.action === 'register' ? { displayName: fields.displayName, ...(fields.phone === undefined ? {} : { phone: fields.phone }) } : {}),
-  };
+  const google = fields.action === 'google' || fields.action === 'link-google';
   try {
-    const issued = await authRequest<{ accessToken: string }>('/auth/' + fields.action, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    const scope = scopeOf(request);
+    let bearer: string | undefined;
+    if (google) {
+      if (scope !== 'customer') throw new SessionServiceError(403, 'Google sign-in is available for player accounts.');
+      verifyGoogleChallenge(request, fields.tenantSlug, fields.nonce);
+      if (fields.action === 'link-google') {
+        const existing = await readSession('customer');
+        if (!existing || existing.principal.tenantSlug !== fields.tenantSlug) throw new SessionServiceError(401, 'Sign in to your player account before connecting Google.');
+        bearer = existing.session.token;
+      }
+    }
+    const payload = google ? { tenantSlug: fields.tenantSlug, credential: fields.credential, nonce: fields.nonce } : {
+      tenantSlug: fields.tenantSlug, email: fields.email, password: fields.password,
+      ...(fields.action === 'register' ? { displayName: fields.displayName, ...(fields.phone === undefined ? {} : { phone: fields.phone }) } : {}),
+    };
+    const action = fields.action === 'link-google' ? 'google/link' : fields.action;
+    const issued = await authRequest<{ accessToken: string }>('/auth/' + action, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) }, body: JSON.stringify(payload),
     });
     if (typeof issued.accessToken !== 'string') throw new SessionServiceError(503, 'The booking service returned an invalid session.');
     const auth = await validateSession(issued.accessToken);
     if (!auth) throw new SessionServiceError(401, 'Sign in to continue.');
     const response = NextResponse.json(auth, { headers: responseHeaders });
-    response.cookies.set(sessionCookieName, issued.accessToken, {
+    response.cookies.set(cookieForScope(scope), issued.accessToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure: request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https',
       path: '/',
       expires: new Date(auth.principal.expiresAt),
     });
-    return response;
+    return google ? clearGoogleChallenge(response, request) : response;
   } catch (error) {
-    return failure(error);
+    const response = failure(error);
+    return google ? clearGoogleChallenge(response, request) : response;
   }
 }
 
 export async function DELETE(request: NextRequest) {
   if (!sameOrigin(request)) return NextResponse.json({ message: 'This sign-out request is not allowed.' }, { status: 403, headers: responseHeaders });
-  return clearSession(NextResponse.json({ signedOut: true }, { headers: responseHeaders }));
+  try { return clearSession(NextResponse.json({ signedOut: true }, { headers: responseHeaders }), scopeOf(request)); }
+  catch (error) { return failure(error); }
 }

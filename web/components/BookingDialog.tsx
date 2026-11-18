@@ -55,6 +55,7 @@ export type BookingActions = {
   cancel: (id: string, payload: CancelPayload) => Promise<Booking>;
   reschedule: (id: string, payload: { slotId: string }) => Promise<Booking>;
   payment: (id: string, kind: PaymentKind, payload: PaymentPayload) => Promise<Booking>;
+  uploadSlip?: (id: string, payload: { amount: string; reference?: string; idempotencyKey: string; reviewDecision: "PENDING" | "APPROVED" }, file: File) => Promise<Booking>;
   createCustomer?: (payload: { name: string; phone?: string }) => Promise<BookingOption>;
 };
 
@@ -75,10 +76,12 @@ export type BookingDialogProps = {
   leadOwners?: BookingOption[];
   currentUser?: BookingOption;
   walletBalance?: string;
+  initialHeadcount?: number;
   actions: BookingActions;
   onClose: () => void;
   token?: string | null;
   onViewInvoice?: (id: string) => void;
+  onCheckout?: (booking: Booking) => void;
 };
 
 const leadSources: Record<LeadSource, string> = { WHATSAPP: "WhatsApp", PHONE: "Phone", WALK_IN: "Walk-in", WEB: "Web" };
@@ -146,17 +149,17 @@ function SlotPicker({ available, lanes, current, timezone, onChange }: {
   onChange: (id: string) => void;
 }) {
   return <>
-    <Field label="Lane">
+    {lanes.length > 1 ? <Field label="Indoor ground">
       <select value={current?.laneId ?? ""} onChange={(event) => onChange(available.find((slot) => slot.laneId === event.target.value)?.id ?? "")}>
-        {!current && <option value="">Select a lane</option>}
+        {!current && <option value="">Select a ground</option>}
         {lanes.filter((lane) => available.some((slot) => slot.laneId === lane.id))
           .map((lane) => <option key={lane.id} value={lane.id}>{lane.name}</option>)}
       </select>
-    </Field>
+    </Field> : <div className="bk-ground-label"><span>Indoor ground</span><strong>{lanes[0]?.name ?? "Full Turf"}</strong></div>}
     <Field label="Time slot">
       <select required value={current?.id ?? ""} onChange={(event) => onChange(event.target.value)}>
-        {!current && <option value="">{available.length ? "Select a lane first" : "No available time slots"}</option>}
-        {available.filter((slot) => slot.laneId === current?.laneId)
+        {!current && <option value="">{available.length ? "Select a session" : "No available time slots"}</option>}
+        {available.filter((slot) => lanes.length === 1 || slot.laneId === current?.laneId)
           .map((slot) => <option key={slot.id} value={slot.id}>
             {formatBookingDate(slot.startsAt, timezone)} · {formatBookingTime(slot.startsAt, timezone)}–{formatBookingTime(slot.endsAt, timezone)}
           </option>)}
@@ -189,7 +192,7 @@ export default BookingDialog;
 
 function BookingDialogContent({
   mode, slots, lanes, timezone, currency, staff, permissions, customers = [], leadOwners = [],
-  currentUser, walletBalance, actions, onClose, demo = false, token, onViewInvoice,
+  currentUser, walletBalance, initialHeadcount = 6, actions, onClose, demo = false, token, onViewInvoice, onCheckout,
 }: BookingDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -211,10 +214,13 @@ function BookingDialogContent({
   );
   const [method, setMethod] = useState<PaymentMethod>("CASH");
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [headcount, setHeadcount] = useState("6");
+  const [headcount, setHeadcount] = useState(String(initialHeadcount));
   const [customerId, setCustomerId] = useState("");
   const [ownerId, setOwnerId] = useState(currentUser?.id ?? "");
-  const [leadSource, setLeadSource] = useState<LeadSource>("WHATSAPP");
+  const isAdmin = permissions.includes("MANAGE_RBAC") || permissions.includes("MANAGE_USERS");
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipReference, setSlipReference] = useState("");
+  const [slipDecision, setSlipDecision] = useState<"PENDING" | "APPROVED">("APPROVED");
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -244,6 +250,11 @@ function BookingDialogContent({
     return slot.status === "AVAILABLE" || (panel === "reschedule" && slot.booking?.id === booking?.id);
   });
   const selectedSlot = bookableSlots.find(({ id }) => id === slotId);
+  useEffect(() => {
+    if ((panel === "new" || panel === "reschedule") && lanes.length === 1 && !slotId && bookableSlots[0]) {
+      setSlotId(bookableSlots[0].id);
+    }
+  }, [panel, lanes.length, slotId, bookableSlots[0]?.id]);
   const amount = Number(selectedSlot?.price ?? 0);
   const wallet = Number(walletBalance ?? 0);
   const canCreateHold = permissions.includes("CREATE_UNPAID_HOLD");
@@ -296,7 +307,8 @@ function BookingDialogContent({
       setError("Enter a whole number of players.");
       return;
     }
-    if (staff && (!customerId || !ownerId)) {
+    const leadOwnerId = isAdmin ? ownerId : currentUser?.id;
+    if (staff && (!customerId || !leadOwnerId)) {
       setError("Choose a customer and a lead owner.");
       return;
     }
@@ -311,21 +323,60 @@ function BookingDialogContent({
       return;
     }
     const payload: CreateBookingPayload = { slotId: selectedSlot.id, headcount: players };
-    if (staff) Object.assign(payload, { customerId, leadOwnerId: ownerId, leadSource });
+    if (staff) Object.assign(payload, { customerId, leadOwnerId, leadSource: "WALK_IN" });
+    const attachTransfer = staff && method === "BANK_TRANSFER" && Boolean(slipFile) && (payment === "full" || payment === "deposit");
     if (amount > 0 && (payment === "full" || payment === "deposit")) {
       const paid = payment === "deposit" ? paymentAmount : selectedSlot.price!;
       if (payment === "deposit") payload.depositRequired = paid;
-      payload.initialPayment = { amount: paid, method, idempotencyKey: keyFor({ operation: "create", ...payload, paid, method }) };
+      if (!attachTransfer) payload.initialPayment = { amount: paid, method, idempotencyKey: keyFor({ operation: "create", ...payload, paid, method }) };
     } else if (amount > 0 && payment === "wallet") {
       payload.initialWalletPaymentKey = keyFor({ operation: "create-wallet", ...payload });
     }
     await perform(async () => {
-      const result = await actions.create(payload);
+      let result = await actions.create(payload);
       setBooking(mergeBooking(result, result, selectedSlot));
+      if (attachTransfer && slipFile) {
+        const paid = payment === "deposit" ? paymentAmount : selectedSlot.price!;
+        changePanel("collect");
+        setPaymentAmount(paid);
+        try { result = await saveSlip(result.id, paid); }
+        catch (cause) {
+          throw new Error("Booking reserved. The slip was not saved. Retry the upload below; this will use the same booking. " + (cause instanceof Error ? cause.message : ""));
+        }
+        setBooking(mergeBooking(result, result, selectedSlot));
+        setSlipFile(null);
+      }
       changePanel("detail");
-      setNotice("Booking created.");
+      setNotice(attachTransfer && slipDecision === "PENDING" ? "Booking created. Transfer slip is awaiting staff review." : "Booking created.");
     });
   }
+
+  function selectSlip(file: File | undefined) {
+    if (!file) { setSlipFile(null); return; }
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type) || file.size === 0 || file.size > 5 * 1024 * 1024) {
+      setError("Choose a JPG, PNG, or PDF transfer slip up to 5 MB.");
+      setSlipFile(null);
+      return;
+    }
+    setError(""); setSlipFile(file);
+  }
+
+  async function saveSlip(id: string, paid: string) {
+    if (!slipFile || !actions.uploadSlip) throw new Error("Transfer slip uploads are unavailable. Try again shortly.");
+    return actions.uploadSlip(id, {
+      amount: paid, reference: slipReference.trim() || undefined, reviewDecision: slipDecision,
+      idempotencyKey: keyFor({ operation: "bank-slip", bookingId: id, amount: paid, reference: slipReference.trim(), reviewDecision: slipDecision, name: slipFile.name, size: slipFile.size, lastModified: slipFile.lastModified }),
+    }, slipFile);
+  }
+
+  const transferAttachment = staff && actions.uploadSlip && method === "BANK_TRANSFER" ? <div className="bk-transfer-attachment">
+    <Field label="Transfer slip (optional)"><input type="file" accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf" onChange={(event) => selectSlip(event.target.files?.[0])}/></Field>
+    <p className="bk-copy">{slipFile ? "Selected: " + slipFile.name : "Attach a JPG, PNG, or PDF file up to 5 MB."}</p>
+    {slipFile && <><Field label="Transfer reference (optional)"><input value={slipReference} maxLength={160} onChange={(event) => setSlipReference(event.target.value)}/></Field>
+      <Field label="Payment verification"><select value={slipDecision} onChange={(event) => setSlipDecision(event.target.value as "PENDING" | "APPROVED")}>
+        <option value="APPROVED">Funds received — record payment</option><option value="PENDING">Save slip — awaiting review</option>
+      </select></Field><p className="bk-copy">{slipDecision === "APPROVED" ? "Record payment only after checking that the transfer reached the bank account." : "The balance stays unpaid until staff approve this slip. The normal hold expiry still applies."}</p></>}
+  </div> : null;
 
   async function addCustomer() {
     if (!actions.createCustomer) return;
@@ -377,9 +428,12 @@ function BookingDialogContent({
           const payload = { amount: paymentAmount, method: finalMethod, idempotencyKey: keyFor({
             operation: kind, bookingId: booking.id, amount: paymentAmount, method: finalMethod,
           }) };
-          result = await actions.payment(booking.id, kind, payload);
+          if (!isRefund && staff && method === "BANK_TRANSFER" && slipFile) {
+            result = await saveSlip(booking.id, paymentAmount);
+            setSlipFile(null);
+          } else result = await actions.payment(booking.id, kind, payload);
           operationKeys.current.clear();
-          success = isRefund ? "Refund recorded." : "Payment recorded.";
+          success = isRefund ? "Refund recorded." : staff && method === "BANK_TRANSFER" && slipFile && slipDecision === "PENDING" ? "Transfer slip saved for review. Payment balance has not changed." : "Payment recorded.";
         }
       }
       setBooking(mergeBooking(booking, result, panel === "reschedule" ? selectedSlot : undefined));
@@ -389,7 +443,7 @@ function BookingDialogContent({
   }
 
   const dialogTitles = {
-    new: staff ? "Quick booking" : "Book a lane",
+    new: staff ? "Quick booking" : "Book Full Turf",
     detail: "Booking details",
     reschedule: "Reschedule booking",
     cancel: "Cancel booking",
@@ -428,12 +482,12 @@ function BookingDialogContent({
                   {directory.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? " · " + customer.phone : ""}</option>)}
                 </select>
               </Field>
-              <Field label="Lead owner">
+              {isAdmin && <Field label="Lead owner">
                 <select required value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
                   <option value="">Select a lead owner</option>
                   {owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
                 </select>
-              </Field>
+              </Field>}
               {actions.createCustomer && <div className="bk-field-full">
                 <button type="button" className="bk-text-action" aria-expanded={addingCustomer} onClick={() => setAddingCustomer((open) => !open)}><Plus size={14} /> Add customer</button>
                 {addingCustomer && <div className="bk-inline-editor">
@@ -442,9 +496,6 @@ function BookingDialogContent({
                   <button className="bk-secondary" type="button" disabled={processing} onClick={addCustomer}>Save customer</button>
                 </div>}
               </div>}
-              <Field label="Lead source"><select value={leadSource} onChange={(event) => setLeadSource(event.target.value as LeadSource)}>
-                {Object.entries(leadSources).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-              </select></Field>
             </>}
             <Field label="Player count"><input required type="number" min={1} max={2147483647} value={headcount} onChange={(event) => setHeadcount(event.target.value)} /></Field>
             {selectedSlot && amount > 0 && <Field label="Payment">
@@ -459,6 +510,7 @@ function BookingDialogContent({
             {selectedSlot && amount > 0 && staff && (payment === "full" || payment === "deposit") &&
               <PaymentMethods method={method} onChange={setMethod} />}
           </div>
+          {selectedSlot && amount > 0 && staff && (payment === "full" || payment === "deposit") && transferAttachment}
           {selectedSlot && <div className="bk-quote">
             <div><span>Booking total</span><strong>{formatBookingMoney(amount, currency)}</strong></div>
             {!staff && walletBalance !== undefined && <div><span>Wallet balance</span><strong>{formatBookingMoney(walletBalance, currency)}</strong></div>}
@@ -466,7 +518,7 @@ function BookingDialogContent({
           </div>}
           {selectedSlot && amount > 0 && staff && (payment === "full" || payment === "deposit") &&
             <p className="bk-copy">Record this payment after it has been received.</p>}
-          {!selectedSlot && <p className="bk-copy"><Clock3 size={16} /> {bookableSlots.length ? "Choose an available lane and time." : "Select another day in the calendar to find available slots."}</p>}
+          {!selectedSlot && <p className="bk-copy"><Clock3 size={16} /> {bookableSlots.length ? "Choose an available ground and time." : "Select another day in the calendar to find available slots."}</p>}
           {error && <p className="bk-error" role="alert"><AlertCircle size={17} />{error}</p>}
         </div>
         <footer className="bk-dialog-footer">
@@ -484,7 +536,7 @@ function BookingDialogContent({
           <span className={"bk-state bk-state-" + bookingState(booking).tone}>{bookingState(booking).label}</span>
           <dl className="bk-detail-grid">
             {booking.slot && <>
-              <div><dt>Lane</dt><dd>{booking.slot.laneName ?? currentLane?.name ?? "Scheduled lane"}</dd></div>
+              <div><dt>Indoor ground</dt><dd>{booking.slot.laneName ?? currentLane?.name ?? "Full Turf"}</dd></div>
               <div><dt>Players</dt><dd>{booking.headcount}</dd></div>
               <div><dt>Date</dt><dd>{formatBookingDate(booking.slot.startsAt, bookingTimeZone)}</dd></div>
               <div><dt>Time</dt><dd>{formatBookingTime(booking.slot.startsAt, bookingTimeZone)}–{formatBookingTime(booking.slot.endsAt, bookingTimeZone)}</dd></div>
@@ -508,6 +560,8 @@ function BookingDialogContent({
           <button type="button" className="bk-secondary" onClick={dismiss}>Close</button>
           {invoiceId && onViewInvoice && <button type="button" className="bk-secondary" onClick={() => onViewInvoice(invoiceId)}><FileText size={15} /> View invoice</button>}
           {active && canManage && <button type="button" className="bk-secondary" onClick={() => changePanel("reschedule")}>Reschedule</button>}
+          {!staff && active && balanceDue > 0 && onCheckout &&
+            <button type="button" className="bk-primary" onClick={() => onCheckout(booking)}><CreditCard size={15} /> Pay booking</button>}
           {active && balanceDue > 0 && (staff ? canRecordPayment : wallet >= balanceDue) &&
             <button type="button" className="bk-primary" onClick={() => changePanel("collect")}>{staff ? "Record payment" : "Pay with wallet"}</button>}
           {staff && canRefund && refundableAmount > 0 && <button type="button" className="bk-primary" onClick={() => changePanel("refund")}>Record refund</button>}
@@ -523,7 +577,7 @@ function BookingDialogContent({
               <div><span>Price difference</span><strong>{formatBookingMoney(amount - Number(booking.totalAmount), currencyCode)}</strong></div>
               {staff && !selectedSlot.staffed && <p><AlertCircle size={15} /> This slot has no roster coverage.</p>}
             </div>}
-            {!selectedSlot && <p className="bk-copy"><Clock3 size={16} /> {bookableSlots.length ? "Choose an available lane and time." : "Select another day in the calendar to find available slots."}</p>}
+            {!selectedSlot && <p className="bk-copy"><Clock3 size={16} /> {bookableSlots.length ? "Choose an available ground and time." : "Select another day in the calendar to find available slots."}</p>}
           </>}
           {panel === "cancel" && <div className="bk-stack">
             <p className="bk-copy">Cancelling releases the time slot. The booking’s cancellation policy determines the final fee and refundable balance.</p>
@@ -540,6 +594,7 @@ function BookingDialogContent({
               </Field>
               {staff && <PaymentMethods method={method} onChange={setMethod} />}
             </div>
+            {panel === "collect" && transferAttachment}
             {!staff && <p className="bk-copy"><Wallet size={16} /> Wallet balance {formatBookingMoney(wallet, currencyCode)}</p>}
             {staff && <p className="bk-copy">{panel === "refund" ? "Record a refund already issued through the original payment method." : "Record a payment after it has been received."}</p>}
           </>}

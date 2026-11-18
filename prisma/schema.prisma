@@ -73,6 +73,19 @@ enum PaymentMethod {
   WALLET
 }
 
+enum BankTransferSlipStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayHereCheckoutStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REVIEW
+}
+
 enum CancellationFeeType {
   FREE
   PERCENT_OF_BOOKING_TOTAL
@@ -96,6 +109,7 @@ model Tenant {
   permissions          Permission[]
   cancellationPolicies CancellationPolicy[]
   invoiceSequence      InvoiceSequence?
+  paymentSettings      PaymentSettings?
 }
 
 model Branch {
@@ -187,6 +201,7 @@ model User {
   email        String
   displayName  String
   passwordHash String?
+  googleSubject String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @db.Timestamptz(3)
@@ -203,9 +218,13 @@ model User {
   issuedInvoices       Invoice[]
   issuedInvoiceCredits InvoiceCreditNote[]
   rosterShifts         StaffRoster[]
+  submittedBankSlips   BankTransferSlip[] @relation("BankSlipSubmitter")
+  reviewedBankSlips    BankTransferSlip[] @relation("BankSlipReviewer")
+  payHereCheckouts     PayHereCheckout[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, email])
+  @@unique([tenantId, googleSubject])
 }
 
 model Role {
@@ -320,6 +339,8 @@ model Booking {
   payments           PaymentTransaction[]
   reschedules        BookingReschedule[]
   invoice            Invoice?
+  bankTransferSlips   BankTransferSlip[]
+  payHereCheckouts    PayHereCheckout[]
 
   // Confirmed reservations and unexpired holds block other bookings.
   // Confirm payment under the same lane lock used to create or reschedule bookings.
@@ -380,6 +401,85 @@ model PaymentTransaction {
   @@unique([tenantId, provider, providerReference])
   @@index([tenantId, bookingId, createdAt])
   @@index([tenantId, recordedById])
+}
+
+model BankTransferSlip {
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @db.Uuid
+  bookingId      String                 @db.Uuid
+  submittedById  String                 @db.Uuid
+  reviewedById   String?                @db.Uuid
+  idempotencyKey String
+  amount         Decimal                @db.Decimal(14, 4)
+  currency       String                 @db.Char(3)
+  reference      String?
+  fileName       String
+  mimeType       String
+  fileSize       Int
+  fileSha256     String
+  attachment     Bytes?
+  /// Private path relative to ATTACHMENTS_DIR. Legacy records may retain DB bytes.
+  storagePath    String?
+  status         BankTransferSlipStatus @default(PENDING)
+  reviewNote     String?
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  reviewedAt     DateTime?              @db.Timestamptz(3)
+
+  booking     Booking @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Restrict)
+  submittedBy User    @relation("BankSlipSubmitter", fields: [tenantId, submittedById], references: [tenantId, id], onDelete: Restrict)
+  reviewedBy  User?   @relation("BankSlipReviewer", fields: [tenantId, reviewedById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, bookingId, createdAt])
+}
+
+model PaymentSettings {
+  tenantId            String  @id @db.Uuid
+  bankTransferEnabled Boolean @default(false)
+  bankName            String  @default("")
+  accountName         String  @default("")
+  accountNumber       String  @default("")
+  bankBranch          String  @default("")
+  instructions        String  @default("")
+  payhereConfigured   Boolean @default(false)
+  payhereEnabled      Boolean @default(false)
+  payhereSandbox      Boolean @default(true)
+  payhereMerchantId   String  @default("")
+  payhereMerchantSecretEncrypted String @default("")
+  payhereNotifyUrl    String  @default("")
+  payhereReturnOrigin String @default("")
+  contactPhone        String @default("")
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+}
+
+model PayHereCheckout {
+  id             String                @id @default(uuid()) @db.Uuid
+  tenantId       String                @db.Uuid
+  bookingId      String                @db.Uuid
+  initiatedById  String                @db.Uuid
+  slotId         String                @db.Uuid
+  idempotencyKey String
+  amount         Decimal               @db.Decimal(14, 4)
+  currency       String                @db.Char(3)
+  merchantId     String
+  /// Encrypted snapshot keeps in-flight sandbox notifications verifiable after credential rotation.
+  merchantSecretEncrypted String?
+  paymentId      String?               @unique
+  status         PayHereCheckoutStatus @default(PENDING)
+  statusCode     String?
+  reviewNote     String?
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(3)
+
+  booking     Booking @relation(fields: [tenantId, bookingId], references: [tenantId, id], onDelete: Restrict)
+  initiatedBy User    @relation(fields: [tenantId, initiatedById], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, bookingId, createdAt])
+  @@index([tenantId, status, createdAt])
 }
 
 model CancellationPolicy {

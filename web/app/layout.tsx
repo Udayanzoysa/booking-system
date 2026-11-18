@@ -9,6 +9,7 @@ import './invoices.css';
 export const metadata: Metadata = {
   title: 'Techwing Arena | Indoor Cricket Bookings',
   description: 'Booking calendar and venue operations for indoor cricket.',
+  icons: { icon: '/icon.svg', shortcut: '/icon.svg', apple: '/icon.svg' },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

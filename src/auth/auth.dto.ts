@@ -37,6 +37,21 @@ export class LoginDto extends EmailDto {
   password!: string;
 }
 
+export class GoogleLoginDto {
+  @IsString()
+  @Length(1, 100)
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  tenantSlug!: string;
+
+  @IsString()
+  @Length(100, 8192)
+  credential!: string;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{43}$/)
+  nonce!: string;
+}
+
 export class CreateStaffDto extends EmailDto {
   @IsString()
   @Length(12, 128)

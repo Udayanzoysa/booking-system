@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { UsersController } from './users.controller';
+import { GoogleIdentityVerifier } from './google-identity-verifier';
 
 const ISSUER = 'indoor-cricket-booking';
 const AUDIENCE = 'booking-api';
@@ -29,6 +30,7 @@ const AUDIENCE = 'booking-api';
   controllers: [AuthController, UsersController],
   providers: [
     AuthService,
+    GoogleIdentityVerifier,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
   exports: [AuthService],

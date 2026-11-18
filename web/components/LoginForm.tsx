@@ -8,11 +8,11 @@ import { useState, type FormEvent } from 'react';
 import type { Principal } from '../lib/session';
 import { hasDashboardAccess } from '../lib/dashboard-access';
 
-export default function LoginForm({ destination, serviceUnavailable }: { destination: string; serviceUnavailable: boolean }) {
+export default function LoginForm({ destination, serviceUnavailable, initialTenantSlug }: { destination: string; serviceUnavailable: boolean; initialTenantSlug?: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(serviceUnavailable ? 'The booking service is unavailable. Try signing in again shortly.' : '');
-  const tenantSlug = process.env.NEXT_PUBLIC_CUSTOMER_TENANT_SLUG?.trim() ?? '';
+  const tenantSlug = initialTenantSlug ?? process.env.NEXT_PUBLIC_CUSTOMER_TENANT_SLUG?.trim() ?? '';
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

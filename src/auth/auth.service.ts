@@ -1,7 +1,9 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -11,8 +13,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PermissionCode, WEB_CUSTOMER_ROLE_NAME } from '../rbac/permissions';
 import { isSampleDatabase } from '../sample-database';
 import type { AuthPrincipal } from './auth-principal';
-import { CreateStaffDto, ListStaffDto, LoginDto, RegisterDto, type DemoAccount } from './auth.dto';
+import { CreateStaffDto, GoogleLoginDto, ListStaffDto, LoginDto, RegisterDto, type DemoAccount } from './auth.dto';
 import { hashPassword, verifyPassword } from './password';
+import { GoogleIdentityVerifier } from './google-identity-verifier';
 
 const TOKEN_LIFETIME_SECONDS = 60 * 60;
 
@@ -22,6 +25,19 @@ const staffAccountSelect = {
   displayName: true,
   isActive: true,
 } satisfies Prisma.UserSelect;
+
+const googleCustomerSelect = {
+  id: true, tenantId: true, email: true, googleSubject: true, isActive: true,
+  customer: { select: { id: true } },
+  roles: { select: { role: { select: { permissions: { select: { permission: { select: { code: true } } } } } } } },
+} satisfies Prisma.UserSelect;
+
+function assertGoogleCustomer(user: Prisma.UserGetPayload<{ select: typeof googleCustomerSelect }>) {
+  if (!user.isActive) throw new UnauthorizedException('This player account is inactive. Contact the club.');
+  if (!user.customer || user.roles.some(({ role }) => role.permissions.some(({ permission }) => permission.code !== PermissionCode.CREATE_UNPAID_HOLD))) {
+    throw new ForbiddenException('Google sign-in is available for player accounts. Staff must use the staff sign-in page.');
+  }
+}
 
 function handleDuplicateEmail(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -35,6 +51,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly googleIdentity: GoogleIdentityVerifier,
   ) {}
 
   async loginDemo(account: DemoAccount, origin?: string) {
@@ -126,6 +143,70 @@ export class AuthService {
     return this.signAccessToken(user.id, user.tenantId);
   }
 
+  async loginGoogle(dto: GoogleLoginDto) {
+    const identity = await this.googleIdentity.verify(dto.credential, dto.nonce);
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug: dto.tenantSlug }, select: { id: true } });
+    if (!tenant) throw new NotFoundException('Arena not found');
+    const user = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${tenant.id}::uuid FOR UPDATE`;
+      const linked = await tx.user.findUnique({
+        where: { tenantId_googleSubject: { tenantId: tenant.id, googleSubject: identity.subject } },
+        select: googleCustomerSelect,
+      });
+      if (linked) { assertGoogleCustomer(linked); return linked; }
+
+      const existingEmail = await tx.user.findUnique({
+        where: { tenantId_email: { tenantId: tenant.id, email: identity.email } }, select: googleCustomerSelect,
+      });
+      if (existingEmail) {
+        assertGoogleCustomer(existingEmail);
+        throw new ConflictException(existingEmail.googleSubject
+          ? 'This player account is connected to a different Google account. Sign in with your existing account.'
+          : 'An account already uses this email. Sign in with your password, then choose Connect Google to link it.');
+      }
+      const role = await tx.role.findUnique({
+        where: { tenantId_name: { tenantId: tenant.id, name: WEB_CUSTOMER_ROLE_NAME } },
+        select: { id: true, permissions: { select: { permission: { select: { code: true } } } } },
+      });
+      if (role?.permissions.length !== 1 || role.permissions[0].permission.code !== PermissionCode.CREATE_UNPAID_HOLD) {
+        throw new ServiceUnavailableException('Player registration is not available for this arena. Contact the club.');
+      }
+      const created = await tx.user.create({ data: {
+        tenantId: tenant.id, email: identity.email, displayName: identity.displayName, googleSubject: identity.subject,
+      }, select: { id: true, tenantId: true } });
+      await tx.customer.create({ data: {
+        tenantId: tenant.id, userId: created.id, name: identity.displayName, email: identity.email,
+      } });
+      await tx.userRole.create({ data: { tenantId: tenant.id, userId: created.id, roleId: role.id } });
+      return created;
+    }).catch(handleDuplicateEmail);
+    return this.signAccessToken(user.id, user.tenantId, 'google');
+  }
+
+  async linkGoogle(principal: AuthPrincipal, dto: GoogleLoginDto) {
+    if (dto.tenantSlug !== principal.tenantSlug) throw new ForbiddenException('Use your current player arena when connecting Google.');
+    const identity = await this.googleIdentity.verify(dto.credential, dto.nonce);
+    const user = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${principal.tenantId}::uuid FOR UPDATE`;
+      const current = await tx.user.findUnique({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: principal.userId } }, select: googleCustomerSelect,
+      });
+      if (!current) throw new UnauthorizedException('Sign in to your player account again.');
+      assertGoogleCustomer(current);
+      if (identity.email !== current.email.toLowerCase()) throw new ForbiddenException('Choose the Google account matching your player account email.');
+      if (current.googleSubject && current.googleSubject !== identity.subject) {
+        throw new ConflictException('This player account is already connected to another Google account.');
+      }
+      const linked = await tx.user.findUnique({
+        where: { tenantId_googleSubject: { tenantId: principal.tenantId, googleSubject: identity.subject } }, select: { id: true },
+      });
+      if (linked && linked.id !== current.id) throw new ConflictException('This Google account is already connected to another player account.');
+      if (!current.googleSubject) await tx.user.update({ where: { id: current.id }, data: { googleSubject: identity.subject } });
+      return current;
+    }).catch(handleDuplicateEmail);
+    return this.signAccessToken(user.id, user.tenantId, 'google');
+  }
+
   async listStaff(tenantId: string, query: ListStaffDto) {
     const limit = query.limit ?? 50;
     const rows = await this.prisma.user.findMany({
@@ -157,7 +238,7 @@ export class AuthService {
 
   async verifyAccessToken(token: string): Promise<AuthPrincipal> {
     const claims = await this.jwt
-      .verifyAsync<{ sub?: unknown; tenantId?: unknown; exp?: unknown }>(token)
+      .verifyAsync<{ sub?: unknown; tenantId?: unknown; exp?: unknown; authMethod?: unknown }>(token)
       .catch(() => {
         throw new UnauthorizedException('Invalid or expired access token');
       });
@@ -168,7 +249,8 @@ export class AuthService {
       typeof claims.tenantId !== 'string' ||
       !isUUID(claims.tenantId) ||
       typeof claims.exp !== 'number' ||
-      !Number.isSafeInteger(claims.exp)
+      !Number.isSafeInteger(claims.exp) ||
+      (claims.authMethod !== undefined && claims.authMethod !== 'google' && claims.authMethod !== 'password')
     ) {
       throw new UnauthorizedException('Invalid access token');
     }
@@ -181,6 +263,8 @@ export class AuthService {
         displayName: true,
         tenant: { select: { slug: true } },
         isActive: true,
+        googleSubject: true,
+        customer: { select: { id: true } },
         roles: {
           select: {
             role: {
@@ -195,6 +279,10 @@ export class AuthService {
     });
     if (!user?.isActive) {
       throw new UnauthorizedException('Inactive or unknown account');
+    }
+    if (claims.authMethod === 'google' && (!user.googleSubject || !user.customer
+      || user.roles.some(({ role }) => role.permissions.some(({ permission }) => permission.code !== PermissionCode.CREATE_UNPAID_HOLD)))) {
+      throw new UnauthorizedException('Google sign-in is limited to player accounts. Use password sign-in for staff access.');
     }
 
     const permissions = new Set<string>();
@@ -214,10 +302,10 @@ export class AuthService {
     };
   }
 
-  private async signAccessToken(userId: string, tenantId: string) {
+  private async signAccessToken(userId: string, tenantId: string, authMethod: 'password' | 'google' = 'password') {
     return {
       tokenType: 'Bearer',
-      accessToken: await this.jwt.signAsync({ tenantId }, {
+      accessToken: await this.jwt.signAsync({ tenantId, authMethod }, {
         subject: userId,
         expiresIn: TOKEN_LIFETIME_SECONDS,
       }),

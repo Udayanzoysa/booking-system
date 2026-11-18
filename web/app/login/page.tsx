@@ -23,5 +23,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   let session;
   try { session = await readSession(); } catch { /* Show the login form with a retryable service message. */ }
   if (session) redirect(hasDashboardAccess(session.principal.permissions) ? destination : '/book');
-  return <LoginForm destination={destination} serviceUnavailable={query.unavailable === '1'} />;
+  return <LoginForm destination={destination} serviceUnavailable={query.unavailable === '1'}
+    initialTenantSlug={process.env.CUSTOMER_TENANT_SLUG?.trim() || process.env.NEXT_PUBLIC_CUSTOMER_TENANT_SLUG?.trim() || 'strikzclub-homagama'} />;
 }
